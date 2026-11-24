@@ -76,8 +76,8 @@ hard-coded backend URLs in the React code.
 | 2  | HTTPS & LAN ✅              | Vite + backend     | Secure context, testing from a phone on Wi-Fi |
 | 3  | Camera / mic ✅             | Media Lab          | `getUserMedia`, `MediaStream`, `<video>` |
 | 4  | Devices & controls ✅       | Media Lab          | `enumerateDevices`, constraints, mute/unmute, `devicechange` |
-| 5  | Loopback peer connection    | Loopback           | Two `RTCPeerConnection`s in one tab, offer/answer |
-| 6  | SDP & ICE inspection        | Loopback           | Reading SDP, ICE candidates, `getStats()` |
+| 5  | Loopback peer connection ✅ | Loopback           | Two `RTCPeerConnection`s in one tab, offer/answer |
+| 6  | SDP & ICE inspection ✅     | Loopback           | Reading SDP, ICE candidates, `getStats()` |
 | 7  | Manual signaling            | Manual Signaling   | Copy/paste offer & answer between tabs/devices |
 | 8  | Socket.IO signaling server  | backend `socket/` + Room | Rooms, relaying offers/answers/candidates |
 | 9  | P2P data channel            | Room               | `RTCDataChannel` chat |
