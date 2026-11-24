@@ -78,7 +78,7 @@ hard-coded backend URLs in the React code.
 | 4  | Devices & controls ✅       | Media Lab          | `enumerateDevices`, constraints, mute/unmute, `devicechange` |
 | 5  | Loopback peer connection ✅ | Loopback           | Two `RTCPeerConnection`s in one tab, offer/answer |
 | 6  | SDP & ICE inspection ✅     | Loopback           | Reading SDP, ICE candidates, `getStats()` |
-| 7  | Manual signaling            | Manual Signaling   | Copy/paste offer & answer between tabs/devices |
+| 7  | Manual signaling ✅         | Manual Signaling   | Copy/paste offer & answer between tabs/devices |
 | 8  | Socket.IO signaling server  | backend `socket/` + Room | Rooms, relaying offers/answers/candidates |
 | 9  | P2P data channel            | Room               | `RTCDataChannel` chat |
 | 10 | P2P video call              | Room               | Full two-person video call, trickle ICE, hang-up |

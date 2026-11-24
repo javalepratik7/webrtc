@@ -185,7 +185,7 @@ export default function useLoopback() {
         log(`A: createOffer → ${offer.sdp.split('\r\n').length} SDP lines`);
         await pcA.setLocalDescription(offer); // starts ICE gathering on A
         if (!trickle) {
-          log('A: non-trickle, waiting for ICE gathering to complete before "sending" the offer');
+          log('A: non-trickle, waiting for ICE gathering to complete before "sending" the offer (max 3 s)');
           await waitForIceGathering(pcA);
           if (stale()) return;
         }

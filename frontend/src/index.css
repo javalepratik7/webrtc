@@ -181,3 +181,38 @@ td > .tag:first-child, dt > .tag:first-child, p > .tag:first-child { margin-left
 .sdp-explain p { margin: 0.35rem 0 0; }
 .sdp-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; }
 .sdp-summary h3 { margin: 0.25rem 0; }
+
+/* Manual Signaling (Step 7) */
+.signal-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+@media (max-width: 860px) { .signal-grid { grid-template-columns: minmax(0, 1fr); } }
+.signal-steps, .signal-side { display: grid; gap: 1rem; }
+.step-card.step-disabled { opacity: 0.5; }
+.step-no {
+  display: inline-grid; place-items: center; min-width: 1.6rem; height: 1.6rem; padding: 0 0.3rem; margin-right: 0.3rem;
+  border-radius: 999px; background: var(--accent); color: #fff; font-size: 0.85rem;
+}
+textarea {
+  width: 100%; background: #0b0d11; color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+  padding: 0.5rem; font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; resize: vertical;
+}
+.copy-box-bar, .paste-box { display: flex; gap: 0.5rem; align-items: center; justify-content: space-between; margin-top: 0.4rem; }
+.paste-box { flex-direction: column; align-items: stretch; }
+.paste-box button { align-self: flex-end; }
+.cand-list { list-style: none; padding: 0; margin: 0 0 0.6rem; display: grid; gap: 0.25rem; max-height: 220px; overflow-y: auto; }
+.cand-list li { display: flex; align-items: center; gap: 0.4rem; }
+.cand-list li code { flex: 1; }
+.small-btn { padding: 0.1rem 0.5rem; font-size: 0.8rem; }
+
+.chat-list { list-style: none; margin: 0 0 0.6rem; padding: 0.5rem; height: 260px; overflow-y: auto; background: #0b0d11; border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; gap: 0.35rem; }
+.chat-list li { display: flex; align-items: flex-end; gap: 0.4rem; max-width: 85%; }
+.chat-me { align-self: flex-end; flex-direction: row-reverse; }
+.chat-peer { align-self: flex-start; }
+.chat-system { align-self: center; color: var(--muted); font-size: 0.75rem; max-width: 100%; }
+.chat-bubble { padding: 0.35rem 0.65rem; border-radius: 12px; background: #232835; word-break: break-word; }
+.chat-me .chat-bubble { background: var(--accent); color: #fff; }
+.chat-time { font-size: 0.7rem; color: var(--muted); }
+.chat-form { display: flex; gap: 0.5rem; }
+.chat-form input {
+  flex: 1; min-width: 0; background: #232835; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.4rem 0.6rem;
+}

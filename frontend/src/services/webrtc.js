@@ -12,16 +12,22 @@ export const NO_STUN_CONFIG = { iceServers: [] };
 
 // Resolves once the peer has finished gathering candidates (for non-trickle /
 // "vanilla" ICE, where the SDP is only sent once it contains every candidate).
-export function waitForIceGathering(pc, timeoutMs = 5000) {
-  if (pc.iceGatheringState === 'complete') return Promise.resolve();
+// Resolves true if gathering completed, false if we gave up after timeoutMs.
+//
+// Why a timeout is essential: "complete" only fires after EVERY STUN request has
+// succeeded or timed out. stun.l.google.com also resolves to IPv6; on a machine
+// without a working IPv6 route that request takes ~40 s to time out (error 701),
+// even though the useful host + srflx candidates arrived within ~100 ms.
+export function waitForIceGathering(pc, timeoutMs = 3000) {
+  if (pc.iceGatheringState === 'complete') return Promise.resolve(true);
   return new Promise((resolve) => {
-    const done = () => {
+    const finish = (completed) => {
       clearTimeout(timer);
       pc.removeEventListener('icegatheringstatechange', check);
-      resolve();
+      resolve(completed);
     };
-    const check = () => pc.iceGatheringState === 'complete' && done();
-    const timer = setTimeout(done, timeoutMs); // e.g. an unreachable STUN server: don't wait forever
+    const check = () => pc.iceGatheringState === 'complete' && finish(true);
+    const timer = setTimeout(() => finish(false), timeoutMs);
     pc.addEventListener('icegatheringstatechange', check);
   });
 }
