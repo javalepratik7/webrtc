@@ -7,24 +7,43 @@
 // (The old way, src={URL.createObjectURL(stream)}, was removed from browsers.)
 //
 // When tracks are added to / removed from the SAME stream (camera switch, screen
-// share), the <video> follows automatically: no need to re-assign srcObject.
-import { useEffect, useRef } from 'react';
+// share, remote tracks arriving one by one), the <video> follows automatically.
+//
+// children are rendered on top of the video (stats overlay, status badges...).
+import { useEffect, useRef, useState } from 'react';
 import { SINK_SUPPORTED } from './DeviceSelector.jsx';
 
-export default function VideoTile({ stream, muted = false, mirrored = false, label, sinkId = '', placeholder }) {
+export default function VideoTile({
+  stream,
+  muted = false,
+  mirrored = false,
+  label,
+  sinkId = '',
+  placeholder,
+  className = '',
+  children,
+}) {
   const videoRef = useRef(null);
+  const [blocked, setBlocked] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return undefined;
     video.srcObject = stream ?? null;
+    setBlocked(false);
+    if (stream) {
+      // autoPlay usually works, but unmuted playback (remote audio) can be blocked by the
+      // autoplay policy if the user hasn't interacted with the page. Offer a click then.
+      video.play().catch((err) => {
+        if (err.name === 'NotAllowedError') setBlocked(true);
+      });
+    }
     return () => {
       video.srcObject = null;
     };
   }, [stream]);
 
-  // Output device for this element's audio ('' = system default). Matters for
-  // remote video later; the local preview is muted anyway.
+  // Output device for this element's audio ('' = system default).
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !SINK_SUPPORTED) return;
@@ -32,7 +51,7 @@ export default function VideoTile({ stream, muted = false, mirrored = false, lab
   }, [sinkId]);
 
   return (
-    <figure className="video-tile">
+    <figure className={`video-tile ${className}`}>
       <video
         ref={videoRef}
         autoPlay // start playing as soon as a stream is attached
@@ -41,7 +60,16 @@ export default function VideoTile({ stream, muted = false, mirrored = false, lab
         className={mirrored ? 'mirrored' : undefined}
       />
       {(!stream || placeholder) && <div className="video-placeholder">{placeholder || 'No video'}</div>}
+      {blocked && (
+        <button
+          className="video-unblock primary"
+          onClick={() => videoRef.current?.play().then(() => setBlocked(false), () => {})}
+        >
+          ▶ Click to play (with sound)
+        </button>
+      )}
       {label && <figcaption>{label}</figcaption>}
+      {children}
     </figure>
   );
 }

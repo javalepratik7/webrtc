@@ -1,12 +1,12 @@
 // Owns the local camera/mic (and screen) MediaStream.
 //
 //   const media = useLocalMedia();
-//   media.start({ video: true, audio: true })  // true = "use my current preferences"
+//   media.start({ video: true, audio: true })  // true = "use my current preferences"; resolves with the stream (or null)
 //   media.stop()
-//   media.switchDevice('video' | 'audio', deviceId)   // live, replaces the track in the stream
+//   media.switchDevice('video' | 'audio', deviceId)   // live, replaces the track in the stream; resolves with the new track
 //   media.setVideoPreset('360p' | '720p' | '1080p')  // live, via applyConstraints
 //   media.setAudioProcessing({ echoCancellation, noiseSuppression, autoGainControl })
-//   media.toggleEnabled('video' | 'audio')           // mute / camera off (track.enabled)
+//   media.toggleEnabled('video' | 'audio')           // mute / camera off (track.enabled); returns the new value
 //   media.startScreenShare() / media.stopScreenShare()
 //
 // State: stream, tracks (plain snapshots incl. getSettings()), error, status,
@@ -180,7 +180,7 @@ export default function useLocalMedia() {
         if (myRequest !== requestIdRef.current) {
           stopAll(newStream);
           log('Discarded a stream that arrived after it was no longer wanted', 'warn');
-          return;
+          return null;
         }
         streamRef.current = newStream;
         setStream(newStream);
@@ -191,10 +191,12 @@ export default function useLocalMedia() {
           .map((t) => `${t.kind}: "${t.label}"`)
           .join(', ');
         log(`Got MediaStream ${newStream.id.slice(0, 8)}… with ${summary}`, 'success');
+        return newStream;
       } catch (err) {
-        if (myRequest !== requestIdRef.current) return;
+        if (myRequest !== requestIdRef.current) return null;
         setStatus('idle');
         fail(err);
+        return null;
       }
     },
     [log, fail, refresh],
@@ -203,14 +205,14 @@ export default function useLocalMedia() {
   // ---- replacing a track inside the stream -------------------------------
 
   // Get a new track of `kind` and swap it into the stream in place of the old one.
-  // Returns true on success. Throws on getUserMedia errors.
+  // Returns the new track (null if cancelled). Throws on getUserMedia errors.
   // releaseFirst: stop the old track BEFORE opening the new one. Needed when
   // changing audio processing: while the old track is open, Chrome may hand back
   // the same underlying source with its OLD echoCancellation/NS/AGC settings.
   const replaceTrack = useCallback(
     async (kind, constraints, { releaseFirst = false } = {}) => {
       const target = streamRef.current;
-      if (!target) return false;
+      if (!target) return null;
       const myRequest = requestIdRef.current;
       const old = currentTrack(kind);
       if (old && releaseFirst) old.stop();
@@ -234,7 +236,7 @@ export default function useLocalMedia() {
 
       if (myRequest !== requestIdRef.current || streamRef.current !== target) {
         fresh.stop(); // stop()/start()/unmount happened meanwhile
-        return false;
+        return null;
       }
 
       fresh.enabled = old ? old.enabled : true; // keep "muted"/"camera off" across switches
@@ -245,7 +247,7 @@ export default function useLocalMedia() {
       target.addTrack(fresh);
       refresh();
       log(`Replaced ${kind} track → "${fresh.label}"`, 'success');
-      return true;
+      return fresh;
     },
     [log, refresh],
   );
@@ -256,13 +258,14 @@ export default function useLocalMedia() {
     async (kind, deviceId) => {
       setPrefs(kind === 'video' ? { videoDeviceId: deviceId } : { audioDeviceId: deviceId });
       // No stream yet, or the video slot is busy with the screen: just remember it for later.
-      if (!streamRef.current || (kind === 'video' && screenRef.current)) return;
+      if (!streamRef.current || (kind === 'video' && screenRef.current)) return null;
       const constraints = kind === 'video' ? buildVideo(prefsRef.current) : buildAudio(prefsRef.current);
       setError(null);
       try {
-        await replaceTrack(kind, constraints);
+        return await replaceTrack(kind, constraints);
       } catch (err) {
         fail(err);
+        return null;
       }
     },
     [setPrefs, replaceTrack, fail],
@@ -320,12 +323,13 @@ export default function useLocalMedia() {
   const toggleEnabled = useCallback(
     (kind) => {
       const track = currentTrack(kind);
-      if (!track) return;
+      if (!track) return null;
       // enabled=false: the track keeps running and the device stays open, but it
       // produces black frames / silence. Instant and reversible (unlike stop()).
       track.enabled = !track.enabled;
       log(`${kind} track enabled = ${track.enabled}`);
       refresh();
+      return track.enabled;
     },
     [log, refresh],
   );

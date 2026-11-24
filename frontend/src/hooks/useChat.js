@@ -1,6 +1,7 @@
 // Chat over any RTCDataChannel (used by Manual Signaling now, by Room in step 9).
 //
-//   const chat = useChat(channel, connectionState);   // channel: RTCDataChannel | null
+//   const chat = useChat(channel, connectionState, { onData });   // channel: RTCDataChannel | null
+//   chat.sendJson(obj)   send any other message type; the peer's onData(obj) receives it
 //   chat.state     'none' | 'connecting' | 'open' | 'closing' | 'closed'
 //   chat.messages  [{ id, from: 'me' | 'peer' | 'system', text, time }]
 //   chat.send(text) → true if sent
@@ -20,11 +21,13 @@ const TYPING_TIMEOUT_MS = 3000;
 
 let nextId = 1;
 
-export default function useChat(channel, connectionState) {
+export default function useChat(channel, connectionState, { onData } = {}) {
   const [messages, setMessages] = useState([]);
   const [state, setState] = useState(channel?.readyState ?? 'none');
   const [peerTyping, setPeerTyping] = useState(false);
   const typingTimer = useRef(null);
+  const onDataRef = useRef(onData);
+  onDataRef.current = onData;
   const lastTypingSent = useRef(0);
 
   const add = useCallback((from, text) => {
@@ -56,6 +59,10 @@ export default function useChat(channel, connectionState) {
           setPeerTyping(true);
           clearTimeout(typingTimer.current);
           typingTimer.current = setTimeout(() => setPeerTyping(false), TYPING_TIMEOUT_MS);
+          return;
+        }
+        if (msg?.type && msg.type !== 'chat') {
+          onDataRef.current?.(msg); // app-level message (e.g. media-state)
           return;
         }
         if (msg?.type === 'chat') text = msg.text;
@@ -94,6 +101,15 @@ export default function useChat(channel, connectionState) {
     [channel, add, dead],
   );
 
+  const sendJson = useCallback(
+    (obj) => {
+      if (dead || channel?.readyState !== 'open') return false;
+      channel.send(JSON.stringify(obj));
+      return true;
+    },
+    [channel, dead],
+  );
+
   const notifyTyping = useCallback(() => {
     if (dead || channel?.readyState !== 'open') return;
     const now = Date.now();
@@ -104,5 +120,5 @@ export default function useChat(channel, connectionState) {
 
   const clear = useCallback(() => setMessages([]), []);
 
-  return { messages, state: dead && state !== 'none' ? 'closed' : state, send, clear, notifyTyping, peerTyping: peerTyping && !dead };
+  return { messages, state: dead && state !== 'none' ? 'closed' : state, send, sendJson, clear, notifyTyping, peerTyping: peerTyping && !dead };
 }

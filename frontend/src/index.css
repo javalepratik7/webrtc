@@ -239,3 +239,42 @@ textarea {
 .p2p-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; margin-top: 1rem; align-items: start; }
 @media (max-width: 800px) { .p2p-grid { grid-template-columns: minmax(0, 1fr); } }
 .p2p-banner { margin: 0.5rem 0 0; padding: 0.5rem 0.75rem; border-radius: 6px; background: rgba(63, 185, 80, 0.1); border: 1px solid var(--ok); }
+
+/* Video call (Step 10) */
+.lobby { max-width: 720px; }
+.call-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 1rem; align-items: start; }
+@media (max-width: 900px) { .call-layout { grid-template-columns: minmax(0, 1fr); } }
+.call-side { display: grid; gap: 1rem; }
+.call-side .chat-list { height: 300px; }
+.call-stage { position: relative; }
+.video-tile.remote { aspect-ratio: 16 / 9; }
+@media (max-width: 600px) { .video-tile.remote { aspect-ratio: 3 / 4; } }
+.video-tile.local-pip {
+  position: absolute; right: 0.75rem; bottom: 0.75rem; width: 26%; min-width: 110px; aspect-ratio: 4 / 3;
+  border: 2px solid rgba(255, 255, 255, 0.25); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5); z-index: 2;
+}
+.video-tile.local-pip video { object-fit: cover; }
+.video-tile.local-pip figcaption { font-size: 0.7rem; left: 0.3rem; bottom: 0.3rem; }
+.video-tile.local-pip .video-placeholder { font-size: 0.75rem; text-align: center; padding: 0.3rem; }
+.video-tile.remote figcaption { bottom: auto; top: 0.5rem; left: 0.5rem; }
+.call-status {
+  position: absolute; top: 0.5rem; left: 50%; transform: translateX(-50%); z-index: 3;
+  padding: 0.2rem 0.7rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; background: rgba(0, 0, 0, 0.65);
+}
+.call-status-ok { color: var(--ok); }
+.call-status-warn { color: var(--warn); }
+.call-status-err { color: var(--err); }
+.call-status-info { color: var(--muted); }
+.remote-muted { position: absolute; top: 0.5rem; right: 0.5rem; z-index: 3; background: rgba(0, 0, 0, 0.65); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8rem; }
+.stats-overlay {
+  position: absolute; left: 0.5rem; top: 2.4rem; z-index: 3; max-width: calc(100% - 1rem);
+  background: rgba(0, 0, 0, 0.72); color: #dfe6f3; border-radius: 6px; padding: 0.4rem 0.6rem;
+  font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem; line-height: 1.5;
+}
+.stats-overlay b { color: #8db4ff; font-weight: 600; }
+.video-unblock { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; }
+.call-controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; }
+.call-controls button { padding: 0.5rem 0.9rem; border-radius: 999px; }
+.call-controls button.hangup { background: var(--err); border-color: var(--err); color: #fff; }
+.call-share { text-align: center; }
+.call-share code { display: block; margin-top: 0.25rem; }

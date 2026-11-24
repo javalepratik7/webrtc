@@ -1,18 +1,35 @@
 # WebRTC Lab
 
-A hands-on project for learning WebRTC from scratch, one step at a time.
-Theory notes: `~/Desktop/Code/functionality/Webrtc.md`.
+A hands-on project for learning WebRTC from scratch, built in 10 steps: from
+`getUserMedia` to a complete 1:1 peer-to-peer video call with chat, over a
+Socket.IO signaling server.
+
+Theory notes: `~/Desktop/Code/functionality/Webrtc.md`. What I learned in each step: [`notes/`](notes/).
 
 ```
 WebRTC/
-├── backend/    Node.js + Express (ES modules). Health API + Socket.IO signaling (rooms, relay)
-└── frontend/   React + Vite. One page per group of roadmap steps, shared on-screen event log
+├── backend/                 Node.js + Express (ES modules), port 4000
+│   ├── server.js            Express app + http.Server + Socket.IO
+│   ├── config/              env vars (PORT, CLIENT_ORIGIN)
+│   ├── routes/ controllers/ GET /api/health, GET /api/network (LAN IPs, dev helper)
+│   ├── socket/              Socket.IO setup + room/signal handlers
+│   └── services/            roomService: in-memory rooms, max 2 users
+├── frontend/                React + Vite, HTTPS on port 5173
+│   └── src/
+│       ├── pages/           Home, MediaLab, Loopback, ManualSignaling, Room
+│       ├── hooks/           useLocalMedia, useDevices, useLoopback, useManualPeer,
+│       │                    useSignaling, usePeerConnection, useChat, useLog, …
+│       ├── components/      VideoTile, MicLevel, DeviceSelector, SdpViewer, CandidateTable,
+│       │                    StatsPanel, StatsOverlay, ChatBox, CallControls, CopyBox, LogPanel, …
+│       └── services/        webrtc.js (ICE config, candidate parser, stats), sdp.js,
+│                            socket.js (single Socket.IO client), api.js
+└── notes/                   step02.md … step10.md
 ```
 
 ## Prerequisites
 
 - Node.js 20.19+ (`node -v`)
-- A browser with camera/mic (Chrome or Firefox recommended)
+- Chrome, Edge or Firefox with a camera/mic; a phone on the same Wi-Fi for the 2-device tests
 
 ## First-time setup
 
@@ -21,10 +38,11 @@ cd backend  && npm install && cp .env.example .env
 cd ../frontend && npm install
 ```
 
-### Local HTTPS certs (Step 2)
+### Local HTTPS certs
 
-The dev server runs on HTTPS (camera/mic need a secure context). Generate certs once
-per machine with [mkcert](https://github.com/FiloSottile/mkcert). They're gitignored:
+Camera/mic only work in a **secure context**, and a phone reaches the laptop via
+`https://<LAN-IP>:5173`. So the dev server needs a certificate for both. Generate one with
+[mkcert](https://github.com/FiloSottile/mkcert) (once per machine; `frontend/certs/` is gitignored):
 
 ```bash
 sudo apt install mkcert libnss3-tools
@@ -34,51 +52,89 @@ mkcert -cert-file certs/dev-cert.pem -key-file certs/dev-key.pem \
   localhost 127.0.0.1 ::1 <your-LAN-IP>      # find it with: hostname -I
 ```
 
-Phone setup and background: [notes/step02.md](notes/step02.md).
+If your LAN IP changes, regenerate. Trusting the CA on Android/iPhone: [notes/step02.md](notes/step02.md).
 
 ## Running (two terminals)
 
-**Terminal 1: backend** (http://localhost:4000)
-
 ```bash
-cd backend
-npm run dev      # auto-restarts on file changes (nodemon)
-# npm start      # plain node, no auto-restart
+cd backend  && npm run dev     # http://localhost:4000 (nodemon)
+cd frontend && npm run dev     # https://localhost:5173 and https://<LAN-IP>:5173
 ```
 
-**Terminal 2: frontend** (https://localhost:5173, and https://<LAN-IP>:5173 from other devices)
+The browser only ever talks to the Vite origin. Vite proxies `/api` and `/socket.io`
+(including the WebSocket upgrade) to Express on `localhost:4000`, so the backend can stay
+plain HTTP and there's no CORS or mixed content.
 
-```bash
-cd frontend
-npm run dev
-```
+## Making a video call
 
-Open https://localhost:5173. The Home page's Environment card should show a secure
-context, `navigator.mediaDevices`, and **Backend: online**.
-Stop the backend and press *Recheck* to see it switch to **offline**.
+1. Laptop: open https://localhost:5173/room, pick a room name, **Join call** (camera + mic start).
+2. The page shows a link like `https://192.168.x.x:5173/room?room=…`. Open it on the phone (same
+   Wi-Fi) or in a second browser, and **Join call**.
+3. The first person becomes the caller; offer, answer and ICE candidates go through the server;
+   video, audio and chat then flow **directly** between the two browsers.
+4. Controls: mute, camera off, switch camera (`sender.replaceTrack`), 📊 live stats, hang up.
 
-In dev, the browser only talks to Vite (`https://…:5173`). Requests to `/api/*`
-(and `/socket.io`, from Step 8) are proxied by Vite to Express (`:4000`), so there are no CORS issues and no
-hard-coded backend URLs in the React code.
+Two tabs on one laptop work too. Use headphones or mute one side, or you'll get audio feedback.
+
+## Pages
+
+| Page | Steps | What it shows |
+| ---- | ----- | ------------- |
+| **Home** | 1–2 | Secure context, `navigator.mediaDevices`, backend health, roadmap |
+| **Media Lab** | 3–4 | getUserMedia, track table, mic meter, device pickers, resolution presets, mute vs stop, audio processing, screen share, speaker selection |
+| **Loopback** | 5–6 | Two peer connections in one tab; SDP viewer with per-line explanations, ICE candidate table (mDNS, srflx), getStats, trickle vs non-trickle |
+| **Manual Signaling** | 7 | Connect two tabs by copy-pasting offer/answer (and candidates): you are the signaling server |
+| **Room** | 8–10 | Socket.IO rooms → P2P data-channel chat → full video call |
+
+Every page writes timestamped events to the **Event log** at the bottom.
 
 ## Environment variables (`backend/.env`)
 
-| Variable        | Default                 | Purpose                                     |
-| --------------- | ----------------------- | ------------------------------------------- |
-| `PORT`          | `4000`                  | Port the Express server listens on          |
+| Variable        | Default                  | Purpose |
+| --------------- | ------------------------ | ------- |
+| `PORT`          | `4000`                   | Port the Express + Socket.IO server listens on |
 | `CLIENT_ORIGIN` | `https://localhost:5173` | Allowed origin(s) for CORS and Socket.IO, comma-separated |
+
+## Signaling protocol (Socket.IO)
+
+| Direction | Event | Data |
+| --------- | ----- | ---- |
+| client → server | `join-room` | `{ roomId, name, clientId }`, ack `{ ok, you, peers }` |
+| client → server | `leave-room` | |
+| client → server | `signal` | `{ type, payload }`, relayed unchanged to the other user |
+| server → client | `peer-joined` / `peer-left` / `room-full` | `{ id, name, clientId }` / `{ id, name, reason }` / `{ roomId }` |
+| server → client | `signal` | `{ from, fromClientId, type, payload }` |
+
+Signal types used: `offer`, `answer`, `candidate`, `bye`, `ping`/`pong`. The server never parses payloads
+and logs only type + size.
+
+## Testing tips
+
+- **Fake devices** (no camera needed, two cameras to switch between, no permission prompt):
+  `google-chrome --use-fake-device-for-media-stream=device-count=2 --use-fake-ui-for-media-stream`.
+  Note: Chrome's second fake camera emulates a depth camera that WebRTC can't encode (0 frames sent). Use
+  it to test switching, but don't expect video from it.
+- **chrome://webrtc-internals**: every peer connection's events, candidate pairs, and stats graphs.
+- The Room lobby's "Simulate slow setRemoteDescription" checkbox (tick it on the callee) makes the candidate queue visible in the log.
 
 ## Roadmap
 
-| #  | Step                        | Where              | Key APIs / concepts |
-| -- | --------------------------- | ------------------ | ------------------- |
-| 1  | Setup ✅                    | whole repo         | Project structure, proxy, shared logger |
-| 2  | HTTPS & LAN ✅              | Vite + backend     | Secure context, testing from a phone on Wi-Fi |
-| 3  | Camera / mic ✅             | Media Lab          | `getUserMedia`, `MediaStream`, `<video>` |
-| 4  | Devices & controls ✅       | Media Lab          | `enumerateDevices`, constraints, mute/unmute, `devicechange` |
-| 5  | Loopback peer connection ✅ | Loopback           | Two `RTCPeerConnection`s in one tab, offer/answer |
-| 6  | SDP & ICE inspection ✅     | Loopback           | Reading SDP, ICE candidates, `getStats()` |
-| 7  | Manual signaling ✅         | Manual Signaling   | Copy/paste offer & answer between tabs/devices |
-| 8  | Socket.IO signaling ✅      | backend `socket/` + Room | Rooms, relaying offers/answers/candidates |
-| 9  | P2P data channel ✅         | Room               | `RTCDataChannel` chat |
-| 10 | P2P video call              | Room               | Full two-person video call, trickle ICE, hang-up |
+| #  | Step                        | Where              | Key APIs / concepts | Notes |
+| -- | --------------------------- | ------------------ | ------------------- | ----- |
+| 1  | Setup ✅                    | whole repo         | Project structure, proxy, shared logger | |
+| 2  | HTTPS & LAN ✅              | Vite + backend     | Secure context, mkcert, phone on Wi-Fi | [step02](notes/step02.md) |
+| 3  | Camera / mic ✅             | Media Lab          | `getUserMedia`, `MediaStream`, `<video>`, Web Audio meter | [step03](notes/step03.md) |
+| 4  | Devices & controls ✅       | Media Lab          | `enumerateDevices`, constraints, `applyConstraints`, `getDisplayMedia`, `setSinkId` | [step04](notes/step04.md) |
+| 5  | Loopback peer connection ✅ | Loopback           | Two `RTCPeerConnection`s, offer/answer | [step06](notes/step06.md) |
+| 6  | SDP & ICE inspection ✅     | Loopback           | Reading SDP, ICE candidates, `getStats()` | [step06](notes/step06.md) |
+| 7  | Manual signaling ✅         | Manual Signaling   | Copy/paste signaling, trickle vs vanilla ICE | [step07](notes/step07.md) |
+| 8  | Socket.IO signaling ✅      | backend + Room     | Rooms, relay, reconnects | [step08](notes/step08.md) |
+| 9  | P2P data channel ✅         | Room               | Trickle ICE, candidate queue, `RTCDataChannel` chat | [step09](notes/step09.md) |
+| 10 | P2P video call ✅           | Room               | Tracks before offer/answer, `ontrack`, `replaceTrack`, stats, cleanup | [step10](notes/step10.md) |
+
+### Next phase
+
+- **TURN server** (coturn) with short-lived credentials from the backend, so calls work across strict NATs / mobile data
+- ICE restart on network changes, perfect negotiation (renegotiation without glare)
+- Auth, room authorization and rate limits on the signaling server
+- Group calls (mesh, then an SFU)

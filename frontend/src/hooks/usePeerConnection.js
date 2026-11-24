@@ -1,46 +1,57 @@
 // One RTCPeerConnection, negotiated over the step 8 signaling channel.
 //
-//   const peer = usePeerConnection({ send });   // send(type, payload) from useSignaling
-//   peer.startAsCaller(peerKey)   → data channel "chat" + offer        (the user already in the room)
-//   peer.handleSignal(msg)        → offer / answer / candidate         (call from onSignal)
+//   const peer = usePeerConnection({ send, getLocalStream });
+//   peer.startAsCaller(peerKey)   → local tracks + data channel "chat" + offer   (the user already in the room)
+//   peer.handleSignal(msg)        → offer / answer / candidate                   (call from onSignal)
+//   peer.replaceTrack(track)      → swap what a sender sends (camera switch), NO renegotiation
+//   peer.getStats()               → summary for StatsOverlay (bitrates need the previous sample, kept here)
 //   peer.close(reason)
-//   peer.state      { connection, iceConnection, signaling, iceGathering }
-//   peer.channel    RTCDataChannel | null
-//   peer.pair       selected candidate pair from getStats (local/remote type, RTT)
-//   peer.peerKey    clientId of the tab we're connected to
+//   peer.state        { connection, iceConnection, signaling, iceGathering } | null
+//   peer.remoteStream MediaStream from ontrack | null
+//   peer.channel      RTCDataChannel | null
+//   peer.closeReason  why the last connection ended ('peer left', 'connection failed'…)
 //
-// Trickle ICE: every candidate is sent as soon as onicecandidate fires.
-// Remote candidates that arrive before setRemoteDescription has finished are
-// QUEUED and added right after it (see applyRemoteDescription).
+// Media order matters (JSEP):
+//   caller: addTrack BEFORE createOffer, so the offer has m=audio / m=video sendrecv
+//   callee: setRemoteDescription(offer) FIRST, then addTrack. addTrack then REUSES the
+//           transceivers the offer created. Adding tracks before setRemoteDescription
+//           would create separate transceivers that the answer can't include, and the
+//           callee's camera would never be sent.
 //
+// Trickle ICE out; remote candidates that arrive before setRemoteDescription are queued.
 // StrictMode safety: a connection is only ever created from an event handler
 // (peer-joined / incoming offer), never in an effect, so StrictMode's double
 // effects can't create a second one. createPc() also closes any previous one.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import useLog from './useLog.js';
-import { ICE_CONFIG, getSelectedCandidatePair } from '../services/webrtc.js';
+import { ICE_CONFIG, collectStats } from '../services/webrtc.js';
 
+const KINDS = ['audio', 'video'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const describeCandidate = (c) => {
   const p = c.candidate.split(' ');
   return `${p[7]} ${p[2]} ${p[4]}:${p[5]}`;
 };
 
-export default function usePeerConnection({ send, slowRemoteMs = 0 }) {
+export default function usePeerConnection({ send, getLocalStream = () => null, slowRemoteMs = 0 }) {
   const { log } = useLog();
   const [state, setState] = useState(null); // null = no connection
   const [role, setRole] = useState(null); // 'caller' | 'callee'
   const [channel, setChannel] = useState(null);
-  const [pair, setPair] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
   const [peerKey, setPeerKey] = useState(null);
+  const [closeReason, setCloseReason] = useState(null);
   const [counts, setCounts] = useState({ sent: 0, received: 0, queued: 0 });
 
   const pcRef = useRef(null);
   const peerKeyRef = useRef(null);
   const pendingRef = useRef([]); // remote candidates waiting for setRemoteDescription
   const genRef = useRef(0); // bumped on create/close: async work for an old pc stops
+  const prevStatsRef = useRef(null);
   const sendRef = useRef(send);
   sendRef.current = send;
+  const localRef = useRef(getLocalStream);
+  localRef.current = getLocalStream;
   const slowRef = useRef(slowRemoteMs);
   slowRef.current = slowRemoteMs;
 
@@ -53,14 +64,18 @@ export default function usePeerConnection({ send, slowRemoteMs = 0 }) {
       pcRef.current = null;
       pendingRef.current = [];
       peerKeyRef.current = null;
+      prevStatsRef.current = null;
       if (pc) {
+        // close() stops sending/receiving and releases sockets. It does NOT stop the
+        // local camera tracks (they belong to useLocalMedia; the page decides).
         pc.close();
         log(`Peer connection closed${reason ? ` (${reason})` : ''}`, 'warn');
+        setCloseReason(reason ?? null);
       }
       setState(null);
       setRole(null);
       setChannel(null);
-      setPair(null);
+      setRemoteStream(null);
       setPeerKey(null);
     },
     [log],
@@ -76,6 +91,7 @@ export default function usePeerConnection({ send, slowRemoteMs = 0 }) {
       pendingRef.current = [];
       setRole(newRole);
       setPeerKey(key);
+      setCloseReason(null);
       setCounts({ sent: 0, received: 0, queued: 0 });
       const mine = () => gen === genRef.current;
 
@@ -100,6 +116,7 @@ export default function usePeerConnection({ send, slowRemoteMs = 0 }) {
         const s = pc.connectionState;
         log(`connectionState → ${s}`, s === 'connected' ? 'success' : s === 'failed' ? 'error' : 'info');
         update();
+        // 'disconnected' is often temporary (Wi-Fi hiccup): wait. 'failed' is final here.
         if (s === 'failed') close('connection failed');
       };
 
@@ -109,6 +126,21 @@ export default function usePeerConnection({ send, slowRemoteMs = 0 }) {
         sendRef.current('candidate', e.candidate.toJSON());
         bump('sent');
         log(`→ candidate ${describeCandidate(e.candidate)}`);
+      };
+
+      // Remote media: fires once per track (audio, video). Both share the stream
+      // the sender named in addTrack(track, stream) (a=msid in the SDP).
+      let fallbackStream = null;
+      pc.ontrack = (e) => {
+        if (!mine()) return;
+        log(`ontrack: remote ${e.track.kind} (mid ${e.transceiver.mid})`, 'success');
+        if (e.streams[0]) {
+          setRemoteStream(e.streams[0]);
+        } else {
+          fallbackStream ??= new MediaStream();
+          fallbackStream.addTrack(e.track);
+          setRemoteStream(fallbackStream);
+        }
       };
 
       // Callee: the caller's "chat" channel arrives through the connection.
@@ -126,8 +158,6 @@ export default function usePeerConnection({ send, slowRemoteMs = 0 }) {
   const applyRemoteDescription = useCallback(
     async (pc, mine, description) => {
       if (slowRef.current) {
-        // Teaching switch: simulates real-world delays before setRemoteDescription
-        // (e.g. awaiting getUserMedia on the callee in step 10).
         log(`(slow callee simulation: waiting ${slowRef.current} ms before setRemoteDescription)`, 'warn');
         await sleep(slowRef.current);
       }
@@ -145,12 +175,27 @@ export default function usePeerConnection({ send, slowRemoteMs = 0 }) {
     [log],
   );
 
+  // Attach local tracks. Caller: missing kinds become recvonly transceivers, so we
+  // can still RECEIVE video even without a camera.
+  const addLocalMedia = (pc, asCaller) => {
+    const stream = localRef.current();
+    for (const kind of KINDS) {
+      const track = stream?.getTracks().find((t) => t.kind === kind);
+      if (track) {
+        pc.addTrack(track, stream);
+      } else if (asCaller) {
+        pc.addTransceiver(kind, { direction: 'recvonly' });
+        log(`No local ${kind}: offering to receive only`, 'warn');
+      }
+    }
+  };
+
   const startAsCaller = useCallback(
     async (key) => {
       const { pc, mine } = createPc('caller', key);
-      log('Peer joined → I am the CALLER: creating data channel "chat" + offer', 'success');
-      // Must exist before createOffer so the offer contains m=application.
-      setChannel(pc.createDataChannel('chat'));
+      log('Peer joined → I am the CALLER: adding tracks + data channel "chat", creating the offer', 'success');
+      addLocalMedia(pc, true);
+      setChannel(pc.createDataChannel('chat')); // before createOffer → m=application
       try {
         const offer = await pc.createOffer();
         if (!mine()) return;
@@ -163,7 +208,7 @@ export default function usePeerConnection({ send, slowRemoteMs = 0 }) {
         close('error');
       }
     },
-    [createPc, close, log],
+    [createPc, close, log], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const handleSignal = useCallback(
@@ -173,6 +218,7 @@ export default function usePeerConnection({ send, slowRemoteMs = 0 }) {
           log(`← offer (${payload.sdp.length} chars) → I am the CALLEE`, 'success');
           const { pc, mine } = createPc('callee', fromClientId);
           if (!(await applyRemoteDescription(pc, mine, payload))) return;
+          addLocalMedia(pc, false); // AFTER setRemoteDescription: reuse the offer's transceivers
           const answer = await pc.createAnswer();
           if (!mine()) return;
           await pc.setLocalDescription(answer);
@@ -206,27 +252,34 @@ export default function usePeerConnection({ send, slowRemoteMs = 0 }) {
         log(`Handling "${type}" failed: ${err.name}: ${err.message}`, 'error');
       }
     },
-    [createPc, applyRemoteDescription, log],
+    [createPc, applyRemoteDescription, log], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  // Selected candidate pair, every 2 s while connected.
-  const connected = state?.connection === 'connected';
-  useEffect(() => {
-    if (!connected) return undefined;
-    let cancelled = false;
-    const poll = async () => {
+  // Camera switch: the sender keeps its slot (transceiver, m-line, SSRC, codec) and
+  // just starts encoding frames from another source. Nothing in the SDP changes, so
+  // no new offer/answer. (Only possible when the new track fits the negotiated m-section.)
+  const replaceTrack = useCallback(
+    async (track) => {
       const pc = pcRef.current;
-      if (!pc) return;
-      const p = await getSelectedCandidatePair(pc);
-      if (!cancelled) setPair(p);
-    };
-    poll();
-    const id = setInterval(poll, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [connected]);
+      if (!pc || !track) return false;
+      const transceiver = pc.getTransceivers().find((t) => t.receiver.track.kind === track.kind);
+      if (!transceiver) return false;
+      await transceiver.sender.replaceTrack(track);
+      log(`sender.replaceTrack(${track.kind}: "${track.label}"): no renegotiation, signalingState still ${pc.signalingState}`, 'success');
+      return true;
+    },
+    [log],
+  );
+
+  const getStats = useCallback(async () => {
+    const pc = pcRef.current;
+    if (!pc) return null;
+    // collectStats reads outbound-rtp from the 1st pc and inbound-rtp from the 2nd:
+    // in a real call both directions live on the same pc.
+    const summary = await collectStats(pc, pc, prevStatsRef.current);
+    prevStatsRef.current = summary;
+    return summary;
+  }, []);
 
   // Leaving the page closes the connection.
   useEffect(
@@ -242,13 +295,16 @@ export default function usePeerConnection({ send, slowRemoteMs = 0 }) {
     state,
     role,
     channel,
-    pair,
+    remoteStream,
     peerKey,
+    closeReason,
     counts,
     isActive: () => Boolean(pcRef.current) && !['failed', 'closed'].includes(pcRef.current.connectionState),
     currentPeerKey: () => peerKeyRef.current,
     startAsCaller,
     handleSignal,
+    replaceTrack,
+    getStats,
     close,
   };
 }
