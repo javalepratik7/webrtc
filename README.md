@@ -74,7 +74,7 @@ hard-coded backend URLs in the React code.
 | -- | --------------------------- | ------------------ | ------------------- |
 | 1  | Setup ✅                    | whole repo         | Project structure, proxy, shared logger |
 | 2  | HTTPS & LAN ✅              | Vite + backend     | Secure context, testing from a phone on Wi-Fi |
-| 3  | Camera / mic                | Media Lab          | `getUserMedia`, `MediaStream`, `<video>` |
+| 3  | Camera / mic ✅             | Media Lab          | `getUserMedia`, `MediaStream`, `<video>` |
 | 4  | Devices & controls          | Media Lab          | `enumerateDevices`, constraints, mute/unmute, `devicechange` |
 | 5  | Loopback peer connection    | Loopback           | Two `RTCPeerConnection`s in one tab, offer/answer |
 | 6  | SDP & ICE inspection        | Loopback           | Reading SDP, ICE candidates, `getStats()` |

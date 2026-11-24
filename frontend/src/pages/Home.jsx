@@ -28,7 +28,7 @@ export default function Home() {
         <h2>Roadmap</h2>
         <ol>
           {ROADMAP.map((step, i) => (
-            <li key={step} className={i <= 1 ? 'done' : ''}>
+            <li key={step} className={i <= 2 ? 'done' : ''}>
               {step}
             </li>
           ))}

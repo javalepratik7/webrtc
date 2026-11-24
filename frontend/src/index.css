@@ -68,3 +68,36 @@ button:hover { border-color: var(--accent); }
 .status-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
 .status-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .status-row .badge { min-width: 4.5rem; text-align: center; }
+
+/* Media Lab (Step 3) */
+.small { font-size: 0.85rem; }
+.ok { color: var(--ok); }
+.err { color: var(--err); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+.alert {
+  border: 1px solid var(--err); background: rgba(248, 81, 73, 0.1);
+  border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem;
+}
+.media-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+@media (max-width: 800px) { .media-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.video-tile { position: relative; margin: 0; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16 / 9; }
+.video-tile video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.video-tile video.mirrored { transform: scaleX(-1); }
+.video-placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); }
+.video-tile figcaption {
+  position: absolute; left: 0.5rem; bottom: 0.5rem; font-size: 0.8rem;
+  background: rgba(0, 0, 0, 0.6); padding: 0.15rem 0.5rem; border-radius: 4px;
+}
+
+.mic-level { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.6rem; }
+.mic-level-track { flex: 1; height: 10px; background: #232835; border-radius: 999px; overflow: hidden; }
+.mic-level-bar { height: 100%; background: var(--ok); transition: width 60ms linear; }
+.mic-level-bar[data-hot='true'] { background: var(--warn); }
+.mic-level-text { min-width: 4.5rem; text-align: right; font-variant-numeric: tabular-nums; font-size: 0.85rem; }
+
+.track-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.track-table th, .track-table td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); }
+.track-table td:nth-child(2) { word-break: break-word; }
