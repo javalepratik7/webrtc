@@ -230,3 +230,12 @@ textarea {
 .member-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.4rem; }
 .dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--border); margin-right: 0.3rem; }
 .dot-on { background: var(--ok); }
+
+/* Chat typing indicator + Room peer card (Step 9) */
+.chat-list { margin-bottom: 0.25rem; }
+.chat-typing { margin: 0 0 0.4rem; min-height: 1.2em; font-size: 0.8rem; color: var(--muted); font-style: italic; }
+.chat-me .chat-time::before { content: 'sent '; }
+.chat-peer .chat-time::before { content: 'received '; }
+.p2p-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; margin-top: 1rem; align-items: start; }
+@media (max-width: 800px) { .p2p-grid { grid-template-columns: minmax(0, 1fr); } }
+.p2p-banner { margin: 0.5rem 0 0; padding: 0.5rem 0.75rem; border-radius: 6px; background: rgba(63, 185, 80, 0.1); border: 1px solid var(--ok); }

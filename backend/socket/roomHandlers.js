@@ -1,15 +1,15 @@
 // Room + signaling events for one socket.
 //
 // Client → server
-//   join-room   { roomId, name }       ack → { ok, roomId, you, peers } | { ok:false, error }
+//   join-room   { roomId, name, clientId } ack → { ok, roomId, you, peers } | { ok:false, error }
 //   leave-room                          ack → { ok }
 //   signal      { type, payload }      ack → { ok } | { ok:false, error:'no-peer' }
 //
 // Server → client
 //   room-full   { roomId }             the room already has 2 users
-//   peer-joined { id, name }           the other user arrived
+//   peer-joined { id, name, clientId } the other user arrived
 //   peer-left   { id, name, reason }   the other user left or disconnected
-//   signal      { from, type, payload } relayed from the other user, UNCHANGED
+//   signal      { from, fromClientId, type, payload } relayed from the other user, UNCHANGED
 //
 // The server never parses `payload`. Offer, answer, candidate, ping... it's all
 // opaque text to be delivered to the other user in the same room.
@@ -36,7 +36,7 @@ export default function registerRoomHandlers(io, socket) {
     logger.info(`room "${left.roomId}": ${who()} left (${reason}) | ${JSON.stringify(rooms.stats())}`);
   }
 
-  socket.on('join-room', ({ roomId, name } = {}, ack) => {
+  socket.on('join-room', ({ roomId, name, clientId } = {}, ack) => {
     const error = rooms.validateRoomId(roomId);
     if (error) return reply(ack, { ok: false, error });
 
@@ -45,7 +45,9 @@ export default function registerRoomHandlers(io, socket) {
     if (current && current !== roomId) leaveCurrentRoom('switched-room');
 
     socket.data.name = rooms.cleanName(name);
-    const result = rooms.join(roomId, { id: socket.id, name: socket.data.name });
+    socket.data.clientId = rooms.cleanClientId(clientId);
+    const you = { id: socket.id, name: socket.data.name, clientId: socket.data.clientId };
+    const result = rooms.join(roomId, you);
 
     if (!result.ok) {
       logger.warn(`room "${roomId}": ${who()} rejected, room full`);
@@ -54,9 +56,9 @@ export default function registerRoomHandlers(io, socket) {
     }
 
     socket.join(roomId); // Socket.IO's own room, used for socket.to(roomId)
-    socket.to(roomId).emit('peer-joined', { id: socket.id, name: socket.data.name });
+    socket.to(roomId).emit('peer-joined', you);
     logger.info(`room "${roomId}": ${who()} joined, peers: ${result.peers.length} | ${JSON.stringify(rooms.stats())}`);
-    return reply(ack, { ok: true, roomId, you: { id: socket.id, name: socket.data.name }, peers: result.peers });
+    return reply(ack, { ok: true, roomId, you, peers: result.peers });
   });
 
   socket.on('leave-room', (ack) => {
@@ -77,7 +79,7 @@ export default function registerRoomHandlers(io, socket) {
 
     // Relay as-is, only to the other user. Log the TYPE and size, never the
     // content: SDP contains IP addresses and ICE credentials.
-    io.to(peer.id).emit('signal', { from: socket.id, type, payload });
+    io.to(peer.id).emit('signal', { from: socket.id, fromClientId: socket.data.clientId, type, payload });
     const size = payload === undefined ? 0 : JSON.stringify(payload).length;
     logger.info(`signal "${type}" ${who()} → ${short(peer.id)} (${peer.name}) [${size} B] in "${roomId}"`);
     return reply(ack, { ok: true });

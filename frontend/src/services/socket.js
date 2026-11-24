@@ -9,6 +9,10 @@
 // autoConnect: false: we connect when a page actually needs signaling.
 import { io } from 'socket.io-client';
 
+// Identifies THIS TAB across socket reconnects (socket.id changes on every
+// reconnect). Lets the peer distinguish "signaling reconnected" from "page reloaded".
+export const clientId = crypto.randomUUID();
+
 export const socket = io({
   autoConnect: false,
   // Defaults: start with HTTP long-polling, upgrade to WebSocket; reconnect

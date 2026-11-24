@@ -272,7 +272,7 @@ export default function ManualSignaling() {
               </tbody>
             </table>
           </div>
-          <ChatBox messages={chat.messages} state={chat.state} onSend={chat.send} />
+          <ChatBox messages={chat.messages} state={chat.state} onSend={chat.send} onTyping={chat.notifyTyping} peerTyping={chat.peerTyping} />
         </div>
       </div>
     </div>

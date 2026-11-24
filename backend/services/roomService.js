@@ -7,6 +7,8 @@
 //   userToRoom:  userId → roomId   (lets disconnect find the room quickly)
 //
 // A "user" is one socket connection; userId = socket.id.
+// clientId is chosen by the browser tab and survives socket reconnects, so a
+// peer can tell "same tab, signaling reconnected" from "new tab / page reload".
 
 export const MAX_USERS_PER_ROOM = 2;
 
@@ -21,6 +23,10 @@ export function validateRoomId(roomId) {
     return 'Room name must be 1–40 characters: letters, digits, "-" or "_".';
   }
   return null;
+}
+
+export function cleanClientId(clientId) {
+  return typeof clientId === 'string' && /^[a-zA-Z0-9-]{1,64}$/.test(clientId) ? clientId : null;
 }
 
 export function cleanName(name) {
@@ -38,7 +44,7 @@ export function join(roomId, user) {
   if (room.has(user.id)) return { ok: true, peers: listPeers(roomId, user.id) }; // already in (idempotent)
   if (room.size >= MAX_USERS_PER_ROOM) return { ok: false, reason: 'full' };
 
-  room.set(user.id, { id: user.id, name: user.name, joinedAt: Date.now() });
+  room.set(user.id, { id: user.id, name: user.name, clientId: user.clientId, joinedAt: Date.now() });
   userToRoom.set(user.id, roomId);
   return { ok: true, peers: listPeers(roomId, user.id) };
 }
@@ -67,10 +73,12 @@ export function getPeer(roomId, userId) {
   return null;
 }
 
+export const publicUser = ({ id, name, clientId }) => ({ id, name, clientId });
+
 export function listPeers(roomId, exceptUserId) {
   const room = rooms.get(roomId);
   // Only public fields go to clients.
-  return room ? [...room.values()].filter((u) => u.id !== exceptUserId).map(({ id, name }) => ({ id, name })) : [];
+  return room ? [...room.values()].filter((u) => u.id !== exceptUserId).map(publicUser) : [];
 }
 
 export function stats() {

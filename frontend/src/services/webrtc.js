@@ -91,6 +91,11 @@ export function parseCandidate(candidateString) {
 //  → local-candidate / remote-candidate). We follow the links for the interesting bits.
 // ---------------------------------------------------------------------------
 
+// Selected candidate pair of ONE peer connection (for the Room page).
+export async function getSelectedCandidatePair(pc) {
+  return selectedPair(await pc.getStats());
+}
+
 function selectedPair(report) {
   let pair = null;
   report.forEach((r) => {

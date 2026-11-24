@@ -13,7 +13,7 @@
 // singleton and is NOT disconnected on cleanup. Reconnecting on every fake
 // unmount would make the server see connect/disconnect/connect.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { socket } from '../services/socket.js';
+import { clientId, socket } from '../services/socket.js';
 import useLog from './useLog.js';
 
 const ACK_TIMEOUT_MS = 5000;
@@ -39,7 +39,7 @@ export default function useSignaling({ onSignal, onPeerJoined, onPeerLeft } = {}
       setError(null);
       let res;
       try {
-        res = await socket.timeout(ACK_TIMEOUT_MS).emitWithAck('join-room', { roomId, name });
+        res = await socket.timeout(ACK_TIMEOUT_MS).emitWithAck('join-room', { roomId, name, clientId });
       } catch {
         res = { ok: false, error: 'No answer from the server (timeout).' };
       }
@@ -86,8 +86,9 @@ export default function useSignaling({ onSignal, onPeerJoined, onPeerLeft } = {}
       }
     };
     const onDisconnect = (reason) => {
+      // Keep `room` as it was: losing the signaling server doesn't mean the peer
+      // left. An established peer-to-peer connection keeps working without it.
       setStatus('disconnected');
-      setRoom((r) => (r ? { ...r, peers: [] } : r));
       log(`Socket disconnected: ${reason}`, 'warn');
     };
     const onConnectError = (err) => {

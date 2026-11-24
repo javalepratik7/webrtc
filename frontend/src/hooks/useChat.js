@@ -4,20 +4,28 @@
 //   chat.state     'none' | 'connecting' | 'open' | 'closing' | 'closed'
 //   chat.messages  [{ id, from: 'me' | 'peer' | 'system', text, time }]
 //   chat.send(text) → true if sent
+//   chat.notifyTyping()  call on every keystroke (throttled: at most one message / 2 s)
+//   chat.peerTyping      true while the peer is typing (cleared after 3 s of silence or on their message)
 //
 // connectionState (pc.connectionState) is needed because a channel can keep saying
 // readyState "open" after its connection has FAILED (peer's tab closed), and
 // dc.close() / pc.close() change readyState WITHOUT firing events.
 //
-// Wire format: JSON { type: 'chat', text, ts }. Using a typed envelope from the
-// start lets us add other message types later (typing, file chunks...).
-import { useCallback, useEffect, useState } from 'react';
+// Wire format: JSON { type: 'chat', text, ts } and { type: 'typing' }. The typed
+// envelope lets us add message types without breaking older ones.
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+const TYPING_SEND_INTERVAL_MS = 2000;
+const TYPING_TIMEOUT_MS = 3000;
 
 let nextId = 1;
 
 export default function useChat(channel, connectionState) {
   const [messages, setMessages] = useState([]);
   const [state, setState] = useState(channel?.readyState ?? 'none');
+  const [peerTyping, setPeerTyping] = useState(false);
+  const typingTimer = useRef(null);
+  const lastTypingSent = useRef(0);
 
   const add = useCallback((from, text) => {
     setMessages((m) => [...m, { id: nextId++, from, text, time: new Date() }]);
@@ -44,10 +52,18 @@ export default function useChat(channel, connectionState) {
       let text = String(e.data);
       try {
         const msg = JSON.parse(e.data);
+        if (msg?.type === 'typing') {
+          setPeerTyping(true);
+          clearTimeout(typingTimer.current);
+          typingTimer.current = setTimeout(() => setPeerTyping(false), TYPING_TIMEOUT_MS);
+          return;
+        }
         if (msg?.type === 'chat') text = msg.text;
       } catch {
         // not JSON: show the raw text
       }
+      clearTimeout(typingTimer.current);
+      setPeerTyping(false);
       add('peer', text);
     };
     channel.addEventListener('open', onOpen);
@@ -57,6 +73,8 @@ export default function useChat(channel, connectionState) {
       channel.removeEventListener('open', onOpen);
       channel.removeEventListener('close', onClose);
       channel.removeEventListener('message', onMessage);
+      clearTimeout(typingTimer.current);
+      setPeerTyping(false);
     };
   }, [channel, add]);
 
@@ -70,12 +88,21 @@ export default function useChat(channel, connectionState) {
       if (dead || !channel || channel.readyState !== 'open' || !text.trim()) return false;
       channel.send(JSON.stringify({ type: 'chat', text, ts: Date.now() }));
       add('me', text);
+      lastTypingSent.current = 0; // next keystroke announces typing again
       return true;
     },
     [channel, add, dead],
   );
 
+  const notifyTyping = useCallback(() => {
+    if (dead || channel?.readyState !== 'open') return;
+    const now = Date.now();
+    if (now - lastTypingSent.current < TYPING_SEND_INTERVAL_MS) return; // throttle
+    lastTypingSent.current = now;
+    channel.send(JSON.stringify({ type: 'typing' }));
+  }, [channel, dead]);
+
   const clear = useCallback(() => setMessages([]), []);
 
-  return { messages, state: dead && state !== 'none' ? 'closed' : state, send, clear };
+  return { messages, state: dead && state !== 'none' ? 'closed' : state, send, clear, notifyTyping, peerTyping: peerTyping && !dead };
 }
