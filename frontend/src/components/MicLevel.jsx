@@ -2,6 +2,10 @@
 //
 //   mic track ─▶ MediaStreamAudioSourceNode ─▶ AnalyserNode   (NOT connected to the speakers)
 //
+// Takes a TRACK, not a stream: createMediaStreamSource() locks onto the audio
+// track the stream had at creation time and ignores later swaps. Keying the
+// effect on the track rebuilds the graph whenever the mic is switched.
+//
 // Every animation frame we read the raw waveform samples from the analyser,
 // compute their RMS (average loudness), convert to decibels and draw a bar.
 // The bar is updated directly through a ref instead of React state, because
@@ -10,20 +14,20 @@ import { useEffect, useRef } from 'react';
 
 const MIN_DB = -60; // treat anything quieter than this as silence
 
-export default function MicLevel({ stream }) {
+export default function MicLevel({ track }) {
   const barRef = useRef(null);
   const textRef = useRef(null);
-  const hasAudio = Boolean(stream?.getAudioTracks().length);
+  const hasAudio = Boolean(track);
 
   useEffect(() => {
-    if (!stream || !stream.getAudioTracks().length) return undefined;
+    if (!track) return undefined;
 
     const ctx = new AudioContext();
     // Autoplay policy: a context can start "suspended". We're created right after
     // the Start click (a user gesture), so resume() is allowed.
     if (ctx.state === 'suspended') ctx.resume();
 
-    const source = ctx.createMediaStreamSource(stream);
+    const source = ctx.createMediaStreamSource(new MediaStream([track]));
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 1024; // the frame size we read: 1024 samples ≈ 21 ms at 48 kHz
     source.connect(analyser);
@@ -59,7 +63,7 @@ export default function MicLevel({ stream }) {
       if (barRef.current) barRef.current.style.width = '0%';
       if (textRef.current) textRef.current.textContent = '';
     };
-  }, [stream]);
+  }, [track]);
 
   return (
     <div className="mic-level">

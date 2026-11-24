@@ -101,3 +101,24 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .track-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .track-table th, .track-table td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); }
 .track-table td:nth-child(2) { word-break: break-word; }
+
+/* Media Lab (Step 4) */
+.media-grid > div { display: grid; gap: 1rem; align-content: start; }
+.media-grid .mic-level { margin-top: -0.4rem; }
+.toolbar.toggles { margin: 0; }
+button[aria-pressed='true'] { border-color: var(--err); color: var(--err); }
+.card h2 { margin-top: 0; font-size: 1.1rem; }
+.card h2 + * { margin-top: 0; }
+.card h3 { font-size: 0.95rem; margin: 0.75rem 0 0.35rem; color: var(--muted); }
+.checkbox { display: block; padding: 0.2rem 0; cursor: pointer; }
+.device-grid { display: grid; gap: 0.75rem; }
+.device-select { display: grid; gap: 0.25rem; }
+.device-grid > .device-select:last-child { grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 0.5rem; }
+select {
+  width: 100%; background: #232835; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.35rem 0.5rem;
+}
+select:disabled { opacity: 0.5; }
+.settings-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.35rem 1rem; margin: 0; font-size: 0.85rem; }
+.settings-list dt { color: var(--muted); font-size: 0.75rem; }
+.settings-list dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-all; }

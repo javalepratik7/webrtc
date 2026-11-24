@@ -5,20 +5,31 @@
 // holds a live object (a MediaStream), and it has no attribute equivalent. So we
 // grab the real DOM element with a ref and assign the property ourselves in an effect.
 // (The old way, src={URL.createObjectURL(stream)}, was removed from browsers.)
+//
+// When tracks are added to / removed from the SAME stream (camera switch, screen
+// share), the <video> follows automatically: no need to re-assign srcObject.
 import { useEffect, useRef } from 'react';
+import { SINK_SUPPORTED } from './DeviceSelector.jsx';
 
-export default function VideoTile({ stream, muted = false, mirrored = false, label }) {
+export default function VideoTile({ stream, muted = false, mirrored = false, label, sinkId = '', placeholder }) {
   const videoRef = useRef(null);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return undefined;
     video.srcObject = stream ?? null;
-    // Detach on change/unmount so the element doesn't keep a stopped stream around.
     return () => {
       video.srcObject = null;
     };
   }, [stream]);
+
+  // Output device for this element's audio ('' = system default). Matters for
+  // remote video later; the local preview is muted anyway.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !SINK_SUPPORTED) return;
+    video.setSinkId(sinkId).catch((err) => console.warn('setSinkId failed:', err));
+  }, [sinkId]);
 
   return (
     <figure className="video-tile">
@@ -29,7 +40,7 @@ export default function VideoTile({ stream, muted = false, mirrored = false, lab
         muted={muted} // local preview: don't play your own mic back to you
         className={mirrored ? 'mirrored' : undefined}
       />
-      {!stream && <div className="video-placeholder">No video</div>}
+      {(!stream || placeholder) && <div className="video-placeholder">{placeholder || 'No video'}</div>}
       {label && <figcaption>{label}</figcaption>}
     </figure>
   );
