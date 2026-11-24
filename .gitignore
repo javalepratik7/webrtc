@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files (secrets/machine-specific). .env.example IS committed.
+.env
+.env.*
+!.env.example
+
+# Local HTTPS certificates (Step 2)
+*.pem
+*.key
+*.crt
+certs/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
