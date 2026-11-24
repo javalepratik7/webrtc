@@ -216,3 +216,17 @@ textarea {
   flex: 1; min-width: 0; background: #232835; color: var(--text); border: 1px solid var(--border);
   border-radius: 6px; padding: 0.4rem 0.6rem;
 }
+
+/* Room (Step 8) */
+.room-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; margin-bottom: 1rem; align-items: start; }
+@media (max-width: 800px) { .room-grid { grid-template-columns: minmax(0, 1fr); } }
+.join-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.5rem; align-items: end; }
+@media (max-width: 500px) { .join-form { grid-template-columns: 1fr; } }
+.join-form label { display: grid; gap: 0.25rem; }
+.join-form input {
+  min-width: 0; background: #232835; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.4rem 0.6rem;
+}
+.member-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.4rem; }
+.dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--border); margin-right: 0.3rem; }
+.dot-on { background: var(--ok); }

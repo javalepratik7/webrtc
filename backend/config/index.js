@@ -7,9 +7,15 @@ dotenv.config({ quiet: true }); // loads backend/.env into process.env
 
 const config = {
   port: Number(process.env.PORT) || 4000,
-  // The URL the React app is served from. Used for CORS now and for
-  // Socket.IO's CORS settings in Step 8.
-  clientOrigin: process.env.CLIENT_ORIGIN || 'https://localhost:5173',
+  // Origin(s) the React app is served from, comma-separated, e.g.
+  //   CLIENT_ORIGIN=https://localhost:5173,https://192.168.0.115:5173
+  // Used for Express CORS and Socket.IO CORS. In dev every request comes
+  // through the Vite proxy (same origin), so this only matters for clients
+  // that call the backend directly.
+  clientOrigins: (process.env.CLIENT_ORIGIN || 'https://localhost:5173')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
   env: process.env.NODE_ENV || 'development',
 };
 

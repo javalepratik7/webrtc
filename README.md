@@ -5,7 +5,7 @@ Theory notes: `~/Desktop/Code/functionality/Webrtc.md`.
 
 ```
 WebRTC/
-├── backend/    Node.js + Express (ES modules). Health API now, Socket.IO signaling in Step 8
+├── backend/    Node.js + Express (ES modules). Health API + Socket.IO signaling (rooms, relay)
 └── frontend/   React + Vite. One page per group of roadmap steps, shared on-screen event log
 ```
 
@@ -66,7 +66,7 @@ hard-coded backend URLs in the React code.
 | Variable        | Default                 | Purpose                                     |
 | --------------- | ----------------------- | ------------------------------------------- |
 | `PORT`          | `4000`                  | Port the Express server listens on          |
-| `CLIENT_ORIGIN` | `https://localhost:5173` | Allowed origin for CORS (and Socket.IO later) |
+| `CLIENT_ORIGIN` | `https://localhost:5173` | Allowed origin(s) for CORS and Socket.IO, comma-separated |
 
 ## Roadmap
 
@@ -79,6 +79,6 @@ hard-coded backend URLs in the React code.
 | 5  | Loopback peer connection ✅ | Loopback           | Two `RTCPeerConnection`s in one tab, offer/answer |
 | 6  | SDP & ICE inspection ✅     | Loopback           | Reading SDP, ICE candidates, `getStats()` |
 | 7  | Manual signaling ✅         | Manual Signaling   | Copy/paste offer & answer between tabs/devices |
-| 8  | Socket.IO signaling server  | backend `socket/` + Room | Rooms, relaying offers/answers/candidates |
+| 8  | Socket.IO signaling ✅      | backend `socket/` + Room | Rooms, relaying offers/answers/candidates |
 | 9  | P2P data channel            | Room               | `RTCDataChannel` chat |
 | 10 | P2P video call              | Room               | Full two-person video call, trickle ICE, hang-up |

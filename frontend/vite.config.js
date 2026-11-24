@@ -32,12 +32,15 @@ export default defineConfig({
     // The browser (laptop or phone) ONLY talks to this HTTPS origin.
     // Vite forwards these paths to the plain-HTTP Express backend on the same machine.
     proxy: {
-      '/api': 'http://localhost:4000',
+      // xfwd: add X-Forwarded-For so the backend logs the real client IP (phone vs laptop)
+      // instead of the proxy's localhost address.
+      '/api': { target: 'http://localhost:4000', xfwd: true },
       // Step 8: Socket.IO uses HTTP long-polling first, then upgrades to a WebSocket.
       // ws: true makes Vite proxy the upgrade too (wss:// from browser -> ws:// to backend).
       '/socket.io': {
         target: 'http://localhost:4000',
         ws: true,
+        xfwd: true,
       },
     },
   },

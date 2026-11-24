@@ -10,3 +10,8 @@ async function request(path, { timeoutMs = 3000, ...options } = {}) {
 export function getHealth() {
   return request('/api/health');
 }
+
+// → { addresses: [{ iface, address }] }: the laptop's LAN IPs, for "open this on your phone" links.
+export function getNetwork() {
+  return request('/api/network');
+}

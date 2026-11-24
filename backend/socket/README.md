@@ -1,8 +1,10 @@
 # socket/
 
-Empty until **Step 8 (Socket.IO signaling server)**.
+Socket.IO signaling (Step 8).
 
-This folder will hold the Socket.IO setup and event handlers that relay
-signaling messages (SDP offers/answers and ICE candidates) between peers in a
-room. The server never touches media: it only passes messages along so two
-browsers can find each other.
+- `index.js`: attaches Socket.IO to the Express HTTP server (same port, path `/socket.io`)
+- `roomHandlers.js`: `join-room`, `leave-room`, `signal` (client → server) and
+  `room-full`, `peer-joined`, `peer-left`, `signal` (server → client)
+
+The server never touches media and never parses SDP: it relays `{ type, payload }`
+to the other user in the room. Room bookkeeping lives in `services/roomService.js`.
