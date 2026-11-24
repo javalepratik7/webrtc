@@ -21,6 +21,21 @@ cd backend  && npm install && cp .env.example .env
 cd ../frontend && npm install
 ```
 
+### Local HTTPS certs (Step 2)
+
+The dev server runs on HTTPS (camera/mic need a secure context). Generate certs once
+per machine with [mkcert](https://github.com/FiloSottile/mkcert). They're gitignored:
+
+```bash
+sudo apt install mkcert libnss3-tools
+mkcert -install
+cd frontend && mkdir -p certs
+mkcert -cert-file certs/dev-cert.pem -key-file certs/dev-key.pem \
+  localhost 127.0.0.1 ::1 <your-LAN-IP>      # find it with: hostname -I
+```
+
+Phone setup and background: [notes/step02.md](notes/step02.md).
+
 ## Running (two terminals)
 
 **Terminal 1: backend** (http://localhost:4000)
@@ -31,18 +46,19 @@ npm run dev      # auto-restarts on file changes (nodemon)
 # npm start      # plain node, no auto-restart
 ```
 
-**Terminal 2: frontend** (http://localhost:5173)
+**Terminal 2: frontend** (https://localhost:5173, and https://<LAN-IP>:5173 from other devices)
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-Open http://localhost:5173. The Home page should show **Backend: online**.
+Open https://localhost:5173. The Home page's Environment card should show a secure
+context, `navigator.mediaDevices`, and **Backend: online**.
 Stop the backend and press *Recheck* to see it switch to **offline**.
 
-In dev, the browser only talks to Vite (`:5173`). Requests to `/api/*` are
-proxied by Vite to Express (`:4000`), so there are no CORS issues and no
+In dev, the browser only talks to Vite (`https://…:5173`). Requests to `/api/*`
+(and `/socket.io`, from Step 8) are proxied by Vite to Express (`:4000`), so there are no CORS issues and no
 hard-coded backend URLs in the React code.
 
 ## Environment variables (`backend/.env`)
@@ -50,14 +66,14 @@ hard-coded backend URLs in the React code.
 | Variable        | Default                 | Purpose                                     |
 | --------------- | ----------------------- | ------------------------------------------- |
 | `PORT`          | `4000`                  | Port the Express server listens on          |
-| `CLIENT_ORIGIN` | `http://localhost:5173` | Allowed origin for CORS (and Socket.IO later) |
+| `CLIENT_ORIGIN` | `https://localhost:5173` | Allowed origin for CORS (and Socket.IO later) |
 
 ## Roadmap
 
 | #  | Step                        | Where              | Key APIs / concepts |
 | -- | --------------------------- | ------------------ | ------------------- |
 | 1  | Setup ✅                    | whole repo         | Project structure, proxy, shared logger |
-| 2  | HTTPS & LAN                 | Vite + backend     | Secure context, testing from a phone on Wi-Fi |
+| 2  | HTTPS & LAN ✅              | Vite + backend     | Secure context, testing from a phone on Wi-Fi |
 | 3  | Camera / mic                | Media Lab          | `getUserMedia`, `MediaStream`, `<video>` |
 | 4  | Devices & controls          | Media Lab          | `enumerateDevices`, constraints, mute/unmute, `devicechange` |
 | 5  | Loopback peer connection    | Loopback           | Two `RTCPeerConnection`s in one tab, offer/answer |

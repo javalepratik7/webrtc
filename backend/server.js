@@ -8,8 +8,9 @@ import healthRoutes from './routes/healthRoutes.js';
 
 const app = express();
 
-// In dev the Vite proxy makes requests same-origin, so CORS isn't strictly needed.
-// It matters when the frontend calls the backend directly (e.g. phone on LAN, Step 2).
+// The browser never calls :4000 directly: every request goes to the HTTPS Vite
+// origin and is proxied here, so it's same-origin and CORS never kicks in.
+// This only matters if something calls the backend cross-origin on purpose.
 app.use(cors({ origin: config.clientOrigin }));
 app.use(express.json());
 

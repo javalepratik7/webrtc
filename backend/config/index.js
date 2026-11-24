@@ -9,7 +9,7 @@ const config = {
   port: Number(process.env.PORT) || 4000,
   // The URL the React app is served from. Used for CORS now and for
   // Socket.IO's CORS settings in Step 8.
-  clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  clientOrigin: process.env.CLIENT_ORIGIN || 'https://localhost:5173',
   env: process.env.NODE_ENV || 'development',
 };
 
