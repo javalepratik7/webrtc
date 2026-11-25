@@ -2,7 +2,7 @@
 
 A hands-on project for learning WebRTC from scratch, built step by step: from
 `getUserMedia` to a complete 1:1 peer-to-peer video call with chat, over a
-Socket.IO signaling server, and then group video calls (full mesh, up to 6 people) made robust and measured.
+Socket.IO signaling server, and then group video calls (full mesh, up to 6 people) made robust and measured, then an SFU (mediasoup) backend.
 
 Theory notes: `~/Desktop/Code/functionality/Webrtc.md`. What I learned in each step: [`notes/`](notes/).
 
@@ -11,9 +11,10 @@ WebRTC/
 ├── backend/                 Node.js + Express (ES modules), port 4000
 │   ├── server.js            Express app + http.Server + Socket.IO
 │   ├── config/              env vars (PORT, CLIENT_ORIGIN)
-│   ├── routes/ controllers/ GET /api/health, GET /api/network (LAN IPs, dev helper)
-│   ├── socket/              Socket.IO setup + room/signal handlers (1:1 and group:*)
-│   └── services/            roomService (1:1, max 2), groupRoomService (mesh, max 6)
+│   ├── routes/ controllers/ GET /api/health, GET /api/network (LAN IPs), GET /api/sfu (workers + rooms)
+│   ├── socket/              Socket.IO setup + room/signal handlers (1:1, group:*, sfu:*)
+│   ├── services/            roomService (1:1, max 2), groupRoomService (mesh, max 6)
+│   └── mediasoup/           SFU: config (codecs, ports, announcedIp), workers (1 per core), sfuRoom (router + peers)
 ├── frontend/                React + Vite, HTTPS on port 5173
 │   └── src/
 │       ├── pages/           Home, MediaLab, Loopback, ManualSignaling, Room, GroupMesh
@@ -24,13 +25,15 @@ WebRTC/
 │       │                    MeshDiagram, GroupChat, VideoGrid, ParticipantTile, CopyBox, LogPanel, …
 │       └── services/        webrtc.js (ICE config, candidate parser, stats), sdp.js,
 │                            socket.js (single Socket.IO client), api.js, meshStats.js
-└── notes/                   step02.md … step13.md
+└── notes/                   step02.md … step14.md
 ```
 
 ## Prerequisites
 
 - Node.js 20.19+ (`node -v`)
 - Chrome, Edge or Firefox with a camera/mic; a phone on the same Wi-Fi for the 2-device tests
+- For the SFU (step 14, mediasoup): `sudo apt install -y build-essential python3 python3-pip python3-venv`. `npm install`
+  may compile the C++ worker (~6 min). Open UDP/TCP 40000–40100 if a firewall is active. See [notes/step14.md](notes/step14.md).
 
 ## First-time setup
 
@@ -96,6 +99,10 @@ Every page writes timestamped events to the **Event log** at the bottom.
 | --------------- | ------------------------ | ------- |
 | `PORT`          | `4000`                   | Port the Express + Socket.IO server listens on |
 | `CLIENT_ORIGIN` | `https://localhost:5173` | Allowed origin(s) for CORS and Socket.IO, comma-separated |
+| `MEDIASOUP_ANNOUNCED_IP` | first LAN IPv4 | IP written into the SFU's ICE candidates: LAN IP in dev, **public/Elastic IP** on EC2 |
+| `MEDIASOUP_LISTEN_IP` | `0.0.0.0` | Bind address for media ports |
+| `MEDIASOUP_RTC_MIN_PORT` / `MAX_PORT` | `40000` / `40100` | UDP + TCP media ports (open them in the firewall / security group) |
+| `MEDIASOUP_WORKERS` | CPU cores | Number of mediasoup-worker processes |
 
 ## Signaling protocol (Socket.IO)
 
@@ -119,6 +126,10 @@ Group mesh (step 11): separate `group:*` events. Signals are **unicast** to one 
 | client → server | `group:signal` | `{ to, type, payload }`, relayed only to `to` (a **clientId** in the same group) |
 | server → client | `group:participant-joined` / `group:participant-left` | `{ socketId, clientId, name, joinedAt }` / `{ socketId, clientId, name, reason }` |
 | server → client | `group:signal` | `{ from, type, payload }` |
+
+SFU (step 14): `sfu:join`, `sfu:createTransport`, `sfu:connectTransport`, `sfu:produce`, `sfu:consume`, `sfu:resumeConsumer`,
+`sfu:closeProducer`, `sfu:leave` (all with ack); server → client `sfu:new-producer`, `sfu:producer-closed`, `sfu:peer-joined/left`,
+`sfu:room-closed`. Details in [notes/step14.md](notes/step14.md).
 
 Peers are addressed by `clientId` (one per tab, survives reconnects). Signal types: `description` and `candidate`,
 with `{ pcId, toPcId }`. The new joiner starts each connection; after that, perfect negotiation lets either side renegotiate.
@@ -149,9 +160,10 @@ with `{ pcId, toPcId }`. The new joiner starts each connection; after that, perf
 | 11 | Group mesh (chat) ✅        | Group Mesh         | Per-peer `RTCPeerConnection` Map, unicast signaling, join rule vs glare, N×(N−1)/2 | [step11](notes/step11.md) |
 | 12 | Group mesh video ✅         | Group Mesh         | One track → N−1 senders, remote streams per peer, media-state broadcast, `audioLevel` active speaker, flicker-free grid | [step12](notes/step12.md) |
 | 13 | Robust mesh + scaling ✅    | Group Mesh         | Perfect negotiation, `restartIce`, reconnect without duplicates, per-peer stats, `setParameters` caps, N−1 upload/CPU experiment | [step13](notes/step13.md) |
+| 14 | SFU backend (mediasoup) ✅  | backend            | Workers, Router, WebRtcTransport, Producer/Consumer, rtpCapabilities, announcedIp, paused consumers | [step14](notes/step14.md) |
 
 ### Next phase
 
 - **TURN server** (coturn) with short-lived credentials from the backend, so calls work across strict NATs / mobile data
 - Auth, room authorization and rate limits on the signaling server
-- Group calls: an SFU (one upload instead of N−1)
+- SFU frontend: mediasoup-client page, then simulcast + layer selection

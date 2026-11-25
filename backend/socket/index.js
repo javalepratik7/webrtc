@@ -8,6 +8,7 @@ import config from '../config/index.js';
 import logger from '../utils/logger.js';
 import registerRoomHandlers from './roomHandlers.js';
 import registerGroupHandlers from './groupHandlers.js';
+import registerSfuHandlers from './sfuHandlers.js';
 
 // Who is this? Behind the Vite proxy the TCP peer is always localhost, so use
 // X-Forwarded-For (the proxy is configured with xfwd: true) for the real address.
@@ -37,7 +38,8 @@ export function attachSocketServer(httpServer) {
     });
 
     registerRoomHandlers(io, socket); // 1:1 rooms (steps 8–10)
-    registerGroupHandlers(io, socket); // group mesh rooms (step 11)
+    registerGroupHandlers(io, socket); // group mesh rooms (steps 11–13)
+    registerSfuHandlers(io, socket); // mediasoup SFU rooms (step 14)
   });
 
   return io;

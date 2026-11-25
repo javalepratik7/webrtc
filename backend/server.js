@@ -7,6 +7,8 @@ import logger from './utils/logger.js';
 import healthRoutes from './routes/healthRoutes.js';
 import networkRoutes from './routes/networkRoutes.js';
 import { attachSocketServer } from './socket/index.js';
+import sfuRoutes from './routes/sfuRoutes.js';
+import { startWorkers } from './mediasoup/workers.js';
 
 const app = express();
 
@@ -27,6 +29,7 @@ app.use((req, res, next) => {
 
 app.use('/api/health', healthRoutes);
 app.use('/api/network', networkRoutes);
+app.use('/api/sfu', sfuRoutes);
 
 // Anything else under /api is an unknown endpoint.
 app.use('/api', (req, res) => {
@@ -37,6 +40,15 @@ app.use('/api', (req, res) => {
 // attach to this same server object: one port for REST and signaling.
 const server = http.createServer(app);
 attachSocketServer(server);
+
+// Step 14: mediasoup workers (C++ processes). Not fatal if they fail: the 1:1 and
+// mesh pages don't need them; sfu:join answers "SFU not available" instead.
+const ms = config.mediasoup;
+startWorkers()
+  .then(() => {
+    logger.info(`mediasoup: RTC ports ${ms.rtcMinPort}–${ms.rtcMaxPort} UDP+TCP on ${ms.listenIp}, announced as ${ms.announcedIp}${ms.announcedIpFromEnv ? '' : ' (auto-detected LAN IP: set MEDIASOUP_ANNOUNCED_IP to override)'}`);
+  })
+  .catch((err) => logger.error(`mediasoup workers failed to start: ${err.message}`));
 
 server.listen(config.port, () => {
   logger.info(`Backend listening on http://localhost:${config.port} (${config.env})`);
