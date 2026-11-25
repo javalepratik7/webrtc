@@ -10,12 +10,10 @@ const CONNECTION_CLASS = {
   disconnected: 'checking',
 };
 
-const ROLE_TEXT = {
-  offerer: 'I sent the offer (I joined later)',
-  answerer: 'they offer, I answer (they joined later)',
-};
+// Who STARTED the connection (step 11 join rule) and who yields on glare (step 13).
+const roleText = (p) => `${p.initiator ? 'I started it (I joined later)' : 'they started it'} · I am ${p.polite ? 'polite' : 'impolite'}`;
 
-export default function ParticipantList({ you, peers }) {
+export default function ParticipantList({ you, peers, onRestartIce }) {
   return (
     <div className="card">
       <h2>
@@ -40,12 +38,19 @@ export default function ParticipantList({ you, peers }) {
                 </span>
               </div>
               <div className="participant-detail muted small">
-                {ROLE_TEXT[p.role]}
+                {roleText(p)}
+                {p.missing && <strong className="stats-warn"> · signaling lost, P2P kept</strong>}
                 {!waiting && (
                   <>
                     {' · '}ICE <code>{p.ice}</code> · signaling <code>{p.signaling}</code> · chat <code>{p.channel}</code>
                     {' · '}candidates ↑{p.counts.sent} ↓{p.counts.received}
                     {p.counts.queued > 0 && ` (${p.counts.queued} queued)`}
+                    {' · '}offers {p.counts.offers} · glare {p.counts.glare} · ICE restarts {p.counts.restarts}
+                    {onRestartIce && (
+                      <button className="small-btn" onClick={() => onRestartIce(p.id)} title="pc.restartIce() for this peer only">
+                        ↻ ICE
+                      </button>
+                    )}
                   </>
                 )}
               </div>

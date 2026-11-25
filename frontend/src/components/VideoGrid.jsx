@@ -1,5 +1,6 @@
 // Responsive grid of ParticipantTiles; the layout depends only on how many people there are:
-//   1 → full width · 2 → side by side · 3–4 → 2×2 · 5–6 → 3×2   (phones: 1 column for 2, 2 columns above)
+//   1 → full width · 2 → side by side · 3–4 → 2×2 · 5+ → 3 columns   (phones: 1 column for 2, 2 columns above)
+// Screen shares are tiles too (step 13), so with screens there can be more than 6.
 //
 //   <VideoGrid tiles={[{ id, name, stream, isLocal, micOn, camOn, connection, mirrored }]}
 //              activeId="…" levels={{ id: 0..1 }} />
@@ -26,6 +27,7 @@ export default function VideoGrid({ tiles, activeId, levels }) {
           name={t.name}
           stream={t.stream}
           isLocal={t.isLocal}
+          isScreen={t.isScreen}
           micOn={t.micOn}
           camOn={t.camOn}
           connection={t.connection}

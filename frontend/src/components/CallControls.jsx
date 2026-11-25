@@ -1,6 +1,6 @@
 // Mute mic / camera off / switch camera / stats / hang up.
 // Presentational: state comes from the local tracks, actions are callbacks.
-// onToggleStats is optional (no Stats button without it); hangUpLabel defaults to "Hang up".
+// onToggleStats / onToggleScreen are optional (no button without them); hangUpLabel defaults to "Hang up".
 export default function CallControls({
   micOn,
   camOn,
@@ -14,6 +14,8 @@ export default function CallControls({
   onToggleStats,
   onHangUp,
   hangUpLabel = 'Hang up',
+  screenOn = false,
+  onToggleScreen,
 }) {
   return (
     <div className="call-controls" role="toolbar" aria-label="Call controls">
@@ -26,6 +28,11 @@ export default function CallControls({
       <button onClick={onSwitchCamera} disabled={!hasCam || !canSwitchCamera} title="Next camera, via sender.replaceTrack (no renegotiation)">
         🔄 Switch camera
       </button>
+      {onToggleScreen && (
+        <button onClick={onToggleScreen} aria-pressed={screenOn} title="Adds a track to every connection → renegotiation with every peer">
+          {screenOn ? '🛑 Stop sharing' : '🖥️ Share screen'}
+        </button>
+      )}
       {onToggleStats && (
         <button onClick={onToggleStats} aria-pressed={statsOn} title="getStats() every 2 s">
           📊 Stats

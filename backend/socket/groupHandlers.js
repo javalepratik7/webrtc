@@ -1,14 +1,18 @@
 // Group (full-mesh) room + signaling events for one socket. Step 11.
 //
 // Client → server
-//   group:join    { roomId, name }       ack → { ok, roomId, you, participants } | { ok:false, error }
-//   group:leave                          ack → { ok }
-//   group:signal  { to, type, payload }  ack → { ok } | { ok:false, error }
+//   group:join    { roomId, name, clientId }  ack → { ok, roomId, you, participants } | { ok:false, error }
+//   group:leave                               ack → { ok }
+//   group:signal  { to, type, payload }       ack → { ok } | { ok:false, error }      to = target's clientId
 //
 // Server → client
-//   group:participant-joined  { socketId, name, joinedAt }   someone new arrived (they will send YOU an offer)
-//   group:participant-left    { socketId, name, reason }     someone left or disconnected
-//   group:signal              { from, type, payload }        relayed from ONE participant, to ONE participant
+//   group:participant-joined  { socketId, clientId, name, joinedAt }   someone arrived (or came back after a reconnect)
+//   group:participant-left    { socketId, clientId, name, reason }     someone left ('left') or their socket dropped ('disconnected')
+//   group:signal              { from, type, payload }                  from = sender's clientId
+//
+// Step 13: peers are addressed by clientId (one per browser tab, survives socket
+// reconnects) instead of socket id, so after a backend restart everyone can
+// re-join and find the SAME peer connections again instead of duplicating them.
 //
 // Why the 1:1 relay ("send to the other user in the room") is not enough anymore:
 //   In a mesh, every pair of users has its OWN RTCPeerConnection, with its own SDP
@@ -43,11 +47,11 @@ export default function registerGroupHandlers(io, socket) {
     const left = groups.leave(socket.id);
     if (!left) return;
     socket.leave(ioRoom(left.roomId));
-    socket.to(ioRoom(left.roomId)).emit('group:participant-left', { socketId: socket.id, name: left.user?.name, reason });
+    socket.to(ioRoom(left.roomId)).emit('group:participant-left', { socketId: socket.id, clientId: left.user?.clientId, name: left.user?.name, reason });
     logger.info(`group "${left.roomId}": ${who()} left (${reason}) | ${JSON.stringify(groups.stats())}`);
   }
 
-  socket.on('group:join', ({ roomId, name } = {}, ack) => {
+  socket.on('group:join', ({ roomId, name, clientId } = {}, ack) => {
     const error = groups.validateRoomId(roomId);
     if (error) return reply(ack, { ok: false, error });
 
@@ -55,12 +59,19 @@ export default function registerGroupHandlers(io, socket) {
     if (current && current !== roomId) leaveCurrentGroup('switched-room');
 
     socket.data.groupName = groups.cleanName(name);
-    const result = groups.join(roomId, { socketId: socket.id, name: socket.data.groupName });
+    socket.data.clientId = groups.cleanClientId(clientId) ?? socket.id; // fallback: old clients without one
+    const result = groups.join(roomId, { socketId: socket.id, clientId: socket.data.clientId, name: socket.data.groupName });
     if (!result.ok) {
       logger.warn(`group "${roomId}": ${who()} rejected, room full (${groups.MAX_USERS_PER_GROUP})`);
       return reply(ack, { ok: false, error: 'room-full' });
     }
 
+    if (result.replaced) {
+      // Same tab, new socket (the old one hasn't timed out yet): drop the old socket
+      // from the broadcast room. Its later 'disconnect' finds nothing to leave → no participant-left.
+      io.sockets.sockets.get(result.replaced)?.leave(ioRoom(roomId));
+      logger.info(`group "${roomId}": ${who()} replaced its stale socket ${short(result.replaced)} (reconnect)`);
+    }
     socket.join(ioRoom(roomId));
     // ORDER MATTERS: the others hear "participant-joined" BEFORE the newcomer gets
     // its ack. The newcomer only sends offers after the ack, and Socket.IO keeps
@@ -84,7 +95,7 @@ export default function registerGroupHandlers(io, socket) {
     }
     const roomId = groups.getRoomOf(socket.id);
     if (!roomId) return reply(ack, { ok: false, error: 'not-in-room' });
-    const target = typeof to === 'string' && to !== socket.id ? groups.getParticipant(roomId, to) : null;
+    const target = typeof to === 'string' && to !== socket.data.clientId ? groups.getParticipantByClientId(roomId, to) : null;
     if (!target) {
       // Usually a race: the target left while our message was in flight.
       logger.warn(`group signal "${type}" from ${who()} → ${short(to)} dropped: not in "${roomId}"`);
@@ -92,7 +103,7 @@ export default function registerGroupHandlers(io, socket) {
     }
 
     // Unicast: io.to(<socket id>) reaches exactly that one socket.
-    io.to(target.socketId).emit('group:signal', { from: socket.id, type, payload });
+    io.to(target.socketId).emit('group:signal', { from: socket.data.clientId, type, payload });
     const size = payload === undefined ? 0 : JSON.stringify(payload).length;
     logger.info(`group signal "${type}" ${who()} → ${short(target.socketId)} (${target.name}) [${size} B] in "${roomId}"`);
     return reply(ack, { ok: true });

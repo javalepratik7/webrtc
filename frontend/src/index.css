@@ -322,3 +322,16 @@ textarea {
 .tile-level i:nth-child(1) { height: 25%; } .tile-level i:nth-child(2) { height: 50%; }
 .tile-level i:nth-child(3) { height: 75%; } .tile-level i:nth-child(4) { height: 100%; }
 .tile-level i.on { background: var(--ok); }
+
+/* Mesh robustness + stats (Step 13) */
+.video-tile.participant-tile.screen-tile video { object-fit: contain; }
+.peer-stats { margin-top: 1rem; }
+.stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem; }
+.stat-tiles > div { display: grid; gap: 0.15rem; align-content: start; padding: 0.5rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; }
+.stat-tiles strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.stat-tiles select, .stats-table select { background: #232835; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 0.15rem 0.3rem; }
+.stats-table { font-variant-numeric: tabular-nums; }
+.stats-table td, .stats-table th { white-space: nowrap; }
+.stats-table tfoot td { border-top: 1px solid var(--border); }
+.stats-warn { color: var(--warn); }
+.participant-detail .small-btn { margin-left: 0.4rem; }

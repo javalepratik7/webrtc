@@ -1,5 +1,7 @@
 // Group room as a FULL MESH.
-// Step 11: chat. Step 12: + video for up to 6 people.
+// Step 11: chat. Step 12: + video for up to 6 people. Step 13: perfect negotiation,
+// per-peer ICE recovery, survives a backend restart, screen share, per-peer stats,
+// bitrate caps (see useMeshRoom + PeerStatsTable).
 //
 //   Join → getUserMedia ONCE (camera + mic) → group:join
 //   → I offer to everyone already here (new joiner rule); they only answer
@@ -21,9 +23,11 @@ import MeshDiagram from '../components/MeshDiagram.jsx';
 import GroupChat from '../components/GroupChat.jsx';
 import VideoGrid from '../components/VideoGrid.jsx';
 import CallControls from '../components/CallControls.jsx';
+import PeerStatsTable from '../components/PeerStatsTable.jsx';
 import { getNetwork } from '../services/api.js';
 
 const isMobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+const CAN_SHARE_SCREEN = !isMobile && Boolean(navigator.mediaDevices?.getDisplayMedia);
 
 function load(key, fallback) {
   try {
@@ -49,6 +53,7 @@ export default function GroupMesh() {
   const [name, setName] = useState(() => (isMobile ? 'Phone' : ''));
   const [joining, setJoining] = useState(false);
   const [lanHosts, setLanHosts] = useState([]);
+  const [statsOn, setStatsOn] = useState(true);
 
   const media = useLocalMedia();
   const devices = useDevices(media.stream);
@@ -76,12 +81,12 @@ export default function GroupMesh() {
   // track.enabled = false only changes what the encoder is fed (silence / black frames).
   // Nothing in RTP or SDP says "muted", so tell everyone explicitly. (Newcomers get
   // the current state when their data channel opens: see useMeshRoom attachChannel.)
-  const { broadcast } = mesh;
+  const { announceMedia } = mesh;
   useEffect(() => {
     if (!inRoom) return;
-    const n = broadcast({ type: 'media-state', audio: micOn, video: camOn });
+    const n = announceMedia(); // { audio, video } + screenStreamId, to every open channel
     if (n) log(`→ media-state (mic ${micOn ? 'on' : 'off'}, camera ${camOn ? 'on' : 'off'}) to ${n} peer(s)`);
-  }, [inRoom, micOn, camOn, broadcast, log]);
+  }, [inRoom, micOn, camOn, announceMedia, log]);
 
   useEffect(() => {
     if (!['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) return;
@@ -183,16 +188,14 @@ export default function GroupMesh() {
       camOn,
       mirrored: camSnap?.settings.facingMode !== 'environment',
     },
+    ...(mesh.screenStream ? [{ id: 'me:screen', name: 'Your screen', stream: mesh.screenStream, isLocal: true, isScreen: true, micOn: true, camOn: true }] : []),
     ...[...mesh.peers]
       .sort((a, b) => a.joinedAt - b.joinedAt)
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        stream: p.remoteStream,
-        micOn: p.media.audio,
-        camOn: p.media.video,
-        connection: p.connection,
-      })),
+      .flatMap((p) => [
+        { id: p.id, name: p.name, stream: p.remoteStream, micOn: p.media.audio, camOn: p.media.video, connection: p.connection },
+        // A screen tile only once both the stream (ontrack) and their media-state say so.
+        ...(p.screenStream ? [{ id: `${p.id}:screen`, name: `${p.name}'s screen`, stream: p.screenStream, isScreen: true, micOn: true, camOn: true }] : []),
+      ]),
   ];
 
   return (
@@ -217,7 +220,12 @@ export default function GroupMesh() {
             onSwitchCamera={switchCamera}
             onHangUp={leave}
             hangUpLabel="Leave"
+            statsOn={statsOn}
+            onToggleStats={() => setStatsOn((v) => !v)}
+            screenOn={Boolean(mesh.screenStream)}
+            onToggleScreen={CAN_SHARE_SCREEN ? () => (mesh.screenStream ? mesh.stopScreenShare() : mesh.startScreenShare()) : undefined}
           />
+          {statsOn && <PeerStatsTable peers={mesh.peers} getPeerStats={mesh.getPeerStats} onSetMaxBitrate={mesh.setMaxBitrate} />}
           <p className="muted small call-share">
             Invite others:{' '}
             {shareUrls.map((u) => (
@@ -228,7 +236,7 @@ export default function GroupMesh() {
           </p>
         </div>
         <aside className="call-side">
-          <ParticipantList you={mesh.room.you} peers={mesh.peers} />
+          <ParticipantList you={mesh.room.you} peers={mesh.peers} onRestartIce={mesh.restartIceFor} />
           <GroupChat messages={mesh.messages} openCount={openCount} peerCount={mesh.peers.length} onSend={mesh.sendChat} />
           <MeshDiagram you={mesh.room.you} peers={mesh.peers} />
         </aside>

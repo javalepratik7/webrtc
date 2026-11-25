@@ -96,7 +96,8 @@ export async function getSelectedCandidatePair(pc) {
   return selectedPair(await pc.getStats());
 }
 
-function selectedPair(report) {
+// Exported for the mesh stats table (step 13).
+export function selectedPair(report) {
   let pair = null;
   report.forEach((r) => {
     if (r.type === 'transport' && r.selectedCandidatePairId) pair = report.get(r.selectedCandidatePairId);

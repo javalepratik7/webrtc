@@ -22,10 +22,12 @@ const initials = (name) =>
     .slice(0, 2)
     .toUpperCase();
 
-function ParticipantTile({ name, stream, isLocal = false, micOn, camOn, speaking, levelBars = 0, connection, mirrored = false }) {
-  const connecting = !isLocal && connection !== 'connected';
+function ParticipantTile({ name, stream, isLocal = false, isScreen = false, micOn, camOn, speaking, levelBars = 0, connection, mirrored = false }) {
+  const connecting = !isLocal && !isScreen && connection !== 'connected';
   let placeholder = null;
-  if (!camOn || !stream) {
+  if (isScreen) {
+    placeholder = stream ? null : 'waiting for the screen…';
+  } else if (!camOn || !stream) {
     placeholder = (
       <span className="tile-avatar" aria-label={`${name}: camera off`}>
         {initials(name) || '?'}
@@ -37,13 +39,13 @@ function ParticipantTile({ name, stream, isLocal = false, micOn, camOn, speaking
   return (
     <VideoTile
       stream={stream}
-      muted={isLocal} // never play your own mic back; remote tiles play their audio
+      muted={isLocal || isScreen} // never play your own mic back; screens carry no audio
       mirrored={mirrored}
-      className={`participant-tile${speaking ? ' speaking' : ''}`}
-      label={isLocal ? `${name} (you)` : name}
+      className={`participant-tile${speaking ? ' speaking' : ''}${isScreen ? ' screen-tile' : ''}`}
+      label={isScreen ? `🖥️ ${name}` : isLocal ? `${name} (you)` : name}
       placeholder={placeholder}
     >
-      {!micOn && (
+      {!isScreen && !micOn && (
         <span className="tile-muted" title="Microphone off" aria-label="microphone off">
           🔇
         </span>
