@@ -7,6 +7,7 @@ import { Server } from 'socket.io';
 import config from '../config/index.js';
 import logger from '../utils/logger.js';
 import registerRoomHandlers from './roomHandlers.js';
+import registerGroupHandlers from './groupHandlers.js';
 
 // Who is this? Behind the Vite proxy the TCP peer is always localhost, so use
 // X-Forwarded-For (the proxy is configured with xfwd: true) for the real address.
@@ -35,7 +36,8 @@ export function attachSocketServer(httpServer) {
       logger.info(`socket ${socket.id.slice(0, 6)} disconnected (${reason})`);
     });
 
-    registerRoomHandlers(io, socket);
+    registerRoomHandlers(io, socket); // 1:1 rooms (steps 8–10)
+    registerGroupHandlers(io, socket); // group mesh rooms (step 11)
   });
 
   return io;

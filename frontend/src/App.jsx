@@ -7,6 +7,7 @@ import MediaLab from './pages/MediaLab.jsx';
 import Loopback from './pages/Loopback.jsx';
 import ManualSignaling from './pages/ManualSignaling.jsx';
 import Room from './pages/Room.jsx';
+import GroupMesh from './pages/GroupMesh.jsx';
 import NotFound from './pages/NotFound.jsx';
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/loopback" element={<Loopback />} />
           <Route path="/manual" element={<ManualSignaling />} />
           <Route path="/room" element={<Room />} />
+          <Route path="/group" element={<GroupMesh />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

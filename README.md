@@ -1,8 +1,8 @@
 # WebRTC Lab
 
-A hands-on project for learning WebRTC from scratch, built in 10 steps: from
+A hands-on project for learning WebRTC from scratch, built step by step: from
 `getUserMedia` to a complete 1:1 peer-to-peer video call with chat, over a
-Socket.IO signaling server.
+Socket.IO signaling server, and then group rooms (full mesh).
 
 Theory notes: `~/Desktop/Code/functionality/Webrtc.md`. What I learned in each step: [`notes/`](notes/).
 
@@ -12,18 +12,19 @@ WebRTC/
 │   ├── server.js            Express app + http.Server + Socket.IO
 │   ├── config/              env vars (PORT, CLIENT_ORIGIN)
 │   ├── routes/ controllers/ GET /api/health, GET /api/network (LAN IPs, dev helper)
-│   ├── socket/              Socket.IO setup + room/signal handlers
-│   └── services/            roomService: in-memory rooms, max 2 users
+│   ├── socket/              Socket.IO setup + room/signal handlers (1:1 and group:*)
+│   └── services/            roomService (1:1, max 2), groupRoomService (mesh, max 6)
 ├── frontend/                React + Vite, HTTPS on port 5173
 │   └── src/
-│       ├── pages/           Home, MediaLab, Loopback, ManualSignaling, Room
+│       ├── pages/           Home, MediaLab, Loopback, ManualSignaling, Room, GroupMesh
 │       ├── hooks/           useLocalMedia, useDevices, useLoopback, useManualPeer,
-│       │                    useSignaling, usePeerConnection, useChat, useLog, …
+│       │                    useSignaling, usePeerConnection, useChat, useMeshRoom, useLog, …
 │       ├── components/      VideoTile, MicLevel, DeviceSelector, SdpViewer, CandidateTable,
-│       │                    StatsPanel, StatsOverlay, ChatBox, CallControls, CopyBox, LogPanel, …
+│       │                    StatsPanel, StatsOverlay, ChatBox, CallControls, ParticipantList,
+│       │                    MeshDiagram, GroupChat, CopyBox, LogPanel, …
 │       └── services/        webrtc.js (ICE config, candidate parser, stats), sdp.js,
 │                            socket.js (single Socket.IO client), api.js
-└── notes/                   step02.md … step10.md
+└── notes/                   step02.md … step11.md
 ```
 
 ## Prerequisites
@@ -85,6 +86,7 @@ Two tabs on one laptop work too. Use headphones or mute one side, or you'll get 
 | **Loopback** | 5–6 | Two peer connections in one tab; SDP viewer with per-line explanations, ICE candidate table (mDNS, srflx), getStats, trickle vs non-trickle |
 | **Manual Signaling** | 7 | Connect two tabs by copy-pasting offer/answer (and candidates): you are the signaling server |
 | **Room** | 8–10 | Socket.IO rooms → P2P data-channel chat → full video call |
+| **Group Mesh** | 11 | Up to 6 people, one peer connection per pair (N×(N−1)/2), per-peer states, group chat over every data channel |
 
 Every page writes timestamped events to the **Event log** at the bottom.
 
@@ -107,6 +109,18 @@ Every page writes timestamped events to the **Event log** at the bottom.
 
 Signal types used: `offer`, `answer`, `candidate`, `bye`, `ping`/`pong`. The server never parses payloads
 and logs only type + size.
+
+Group mesh (step 11): separate `group:*` events. Signals are **unicast** to one participant:
+
+| Direction | Event | Data |
+| --------- | ----- | ---- |
+| client → server | `group:join` | `{ roomId, name }`, ack `{ ok, you, participants }` (everyone already there) |
+| client → server | `group:leave` | |
+| client → server | `group:signal` | `{ to, type, payload }`, relayed only to `to` (must be in the same group) |
+| server → client | `group:participant-joined` / `group:participant-left` | `{ socketId, name, joinedAt }` / `{ socketId, name, reason }` |
+| server → client | `group:signal` | `{ from, type, payload }` |
+
+The new joiner offers to everyone in `participants`; existing users only answer.
 
 ## Testing tips
 
@@ -131,10 +145,11 @@ and logs only type + size.
 | 8  | Socket.IO signaling ✅      | backend + Room     | Rooms, relay, reconnects | [step08](notes/step08.md) |
 | 9  | P2P data channel ✅         | Room               | Trickle ICE, candidate queue, `RTCDataChannel` chat | [step09](notes/step09.md) |
 | 10 | P2P video call ✅           | Room               | Tracks before offer/answer, `ontrack`, `replaceTrack`, stats, cleanup | [step10](notes/step10.md) |
+| 11 | Group mesh (chat) ✅        | Group Mesh         | Per-peer `RTCPeerConnection` Map, unicast signaling, join rule vs glare, N×(N−1)/2 | [step11](notes/step11.md) |
 
 ### Next phase
 
 - **TURN server** (coturn) with short-lived credentials from the backend, so calls work across strict NATs / mobile data
 - ICE restart on network changes, perfect negotiation (renegotiation without glare)
 - Auth, room authorization and rate limits on the signaling server
-- Group calls (mesh, then an SFU)
+- Group calls: video over the mesh, then an SFU

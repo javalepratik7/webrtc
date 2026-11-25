@@ -7,6 +7,7 @@ const links = [
   { to: '/loopback', label: 'Loopback' },
   { to: '/manual', label: 'Manual Signaling' },
   { to: '/room', label: 'Room' },
+  { to: '/group', label: 'Group Mesh' },
 ];
 
 export default function NavBar() {
