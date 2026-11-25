@@ -33,6 +33,8 @@ export default function ParticipantList({ you, peers }) {
               <div className="participant-head">
                 <span className={`dot ${p.connection === 'connected' ? 'dot-on' : ''}`} />
                 <strong>{p.name}</strong> <span className="muted small">{p.id.slice(0, 6)}</span>
+                {!p.media.audio && <span title="mic off">🔇</span>}
+                {!p.media.video && <span title="camera off">🚫📷</span>}
                 <span className={`badge badge-${CONNECTION_CLASS[p.connection] ?? 'checking'} participant-state`}>
                   {waiting ? 'waiting for offer' : p.connection}
                 </span>

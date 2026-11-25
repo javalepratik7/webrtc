@@ -1,18 +1,28 @@
-// Full-mesh group room (step 11): one RTCPeerConnection + one data channel PER other participant.
+// Full-mesh group room: one RTCPeerConnection + one data channel PER other participant.
+// Step 11: chat. Step 12: + audio/video (the SAME local tracks on every connection).
 //
-//   const mesh = useMeshRoom();
+//   const mesh = useMeshRoom({ getLocalStream, getMediaState });
+//     getLocalStream() → the local MediaStream (or null): its tracks go on every NEW connection
+//     getMediaState()  → { audio, video }: sent to each peer as soon as its data channel opens
 //   await mesh.join(roomId, name)   → { ok, participants } | { ok:false, error }
 //   mesh.leave()
 //   mesh.sendChat(text)             → number of peers it was sent to (one data channel each)
+//   mesh.broadcast(obj)             → send any JSON message over every open data channel
+//   mesh.replaceTrack(kind, track)  → sender.replaceTrack on EVERY connection (camera switch)
+//   mesh.getAudioLevels()           → { [peerId]: 0..1, me: 0..1 } from getStats (active speaker)
 //   mesh.status    socket: 'connecting' | 'connected' | 'disconnected'
 //   mesh.room      { id, you } | null
-//   mesh.peers     [{ id, name, role, connection, ice, signaling, channel, counts }]  (render snapshot)
+//   mesh.peers     [{ id, name, role, connection, ice, signaling, channel, counts,
+//                     remoteStream, media: { audio, video } }]  (render snapshot)
 //   mesh.messages  [{ id, from: 'me'|'peer'|'system', name, text, time, sentTo? }]
 //
 // ---------------------------------------------------------------------------
 // The data structure: peersRef.current = Map(peerId → entry)
 //   peerId = the other participant's socket id (what the server uses for `to`/`from`)
-//   entry  = { id, name, joinedAt, role, pc, dataChannel, state, pending, counts }
+//   entry  = { id, name, joinedAt, role, pc, dataChannel, state, pending, counts,
+//              remoteStream, media }
+//   remoteStream is created ONCE per connection (from ontrack) and then only ever
+//   handed out as the same object, so <video>.srcObject never has to be re-set.
 //
 // It's a REF, not state: socket callbacks and pc event handlers fire long after
 // the render that created them, and they must all see the CURRENT Map. React
@@ -51,10 +61,16 @@ const describeCandidate = (c) => {
   return `${p[7]} ${p[2]} ${p[4]}:${p[5]}`;
 };
 const short = (id) => id.slice(0, 6);
+const KINDS = ['audio', 'video'];
 let nextMsgId = 1;
 
-export default function useMeshRoom() {
+export default function useMeshRoom({ getLocalStream = () => null, getMediaState = () => null } = {}) {
   const { log } = useLog();
+  // Latest callbacks in refs: pc/socket handlers created long ago must call the CURRENT ones.
+  const localRef = useRef(getLocalStream);
+  localRef.current = getLocalStream;
+  const mediaStateRef = useRef(getMediaState);
+  mediaStateRef.current = getMediaState;
   const [status, setStatus] = useState(socket.connected ? 'connected' : 'connecting');
   const [room, setRoom] = useState(null);
   const [error, setError] = useState(null);
@@ -77,6 +93,8 @@ export default function useMeshRoom() {
         ...e.state,
         channel: e.dataChannel?.readyState ?? 'none',
         counts: { ...e.counts },
+        remoteStream: e.remoteStream, // same object every time → no srcObject churn
+        media: e.media,
       })),
     );
   }, []);
@@ -114,6 +132,9 @@ export default function useMeshRoom() {
         state: { connection: 'none', ice: 'none', signaling: 'none' },
         pending: [],
         counts: { sent: 0, received: 0, queued: 0 },
+        remoteStream: null,
+        // What they told us over the data channel. Until then, assume on.
+        media: { audio: true, video: true },
       };
       peersRef.current.set(p.socketId, entry);
     }
@@ -150,6 +171,9 @@ export default function useMeshRoom() {
       dc.onopen = () => {
         if (!alive()) return;
         log(`[${entry.name}] data channel "${dc.label}" open`, 'success');
+        // A newcomer missed every earlier media-state broadcast: tell them where we are now.
+        const media = mediaStateRef.current();
+        if (media) dc.send(JSON.stringify({ type: 'media-state', ...media }));
         addMessage('system', `Chat with ${entry.name} connected`);
         publish();
       };
@@ -169,6 +193,11 @@ export default function useMeshRoom() {
         // The author is whoever is at the other end of THIS channel: in a mesh
         // nobody forwards messages, so we know exactly who sent it.
         if (msg?.type === 'chat') addMessage('peer', String(msg.text), { name: entry.name, peerId: entry.id });
+        else if (msg?.type === 'media-state') {
+          entry.media = { audio: msg.audio !== false, video: msg.video !== false };
+          log(`[${entry.name}] media-state: mic ${entry.media.audio ? 'on' : 'off'}, camera ${entry.media.video ? 'on' : 'off'}`);
+          publish();
+        }
       };
       publish();
     },
@@ -186,6 +215,7 @@ export default function useMeshRoom() {
       }
       const pc = new RTCPeerConnection(ICE_CONFIG);
       entry.pc = pc;
+      entry.remoteStream = null; // a new connection brings new remote tracks
       // The handlers below close over THIS pc; if it's replaced or removed, they go quiet.
       const alive = () => peersRef.current.get(entry.id) === entry && entry.pc === pc;
 
@@ -214,6 +244,21 @@ export default function useMeshRoom() {
         publish();
       };
 
+      // Remote media: once per track (audio, video). Both arrive in the stream the
+      // sender named in addTrack(track, stream) (a=msid), so e.streams[0] is the
+      // SAME object both times. Store it once; publish() hands out that same object.
+      pc.ontrack = (e) => {
+        if (!alive()) return;
+        log(`[${entry.name}] ontrack: remote ${e.track.kind}`, 'success');
+        if (e.streams[0]) {
+          entry.remoteStream = e.streams[0];
+        } else {
+          entry.remoteStream ??= new MediaStream();
+          entry.remoteStream.addTrack(e.track);
+        }
+        publish();
+      };
+
       // Answerer side: the offerer's "chat" channel arrives through the connection.
       pc.ondatachannel = (e) => {
         if (!alive()) return;
@@ -239,12 +284,29 @@ export default function useMeshRoom() {
     [log],
   );
 
-  // NEW joiner → one existing participant: data channel + offer.
+  // The SAME local track objects go on every connection. Offerer: before createOffer
+  // (a missing kind becomes recvonly, so we can still receive it). Answerer: after
+  // setRemoteDescription, so addTrack reuses the transceivers the offer created.
+  const addLocalMedia = useCallback(
+    (pc, asOfferer, name) => {
+      const stream = localRef.current();
+      for (const kind of KINDS) {
+        const track = stream?.getTracks().find((t) => t.kind === kind);
+        if (track) pc.addTrack(track, stream);
+        else if (asOfferer) pc.addTransceiver(kind, { direction: 'recvonly' });
+      }
+      log(`[${name}] added local ${stream ? stream.getTracks().map((t) => t.kind).join(' + ') : 'nothing (receive only)'}`);
+    },
+    [log],
+  );
+
+  // NEW joiner → one existing participant: tracks + data channel + offer.
   const callPeer = useCallback(
     async (p) => {
       const entry = ensureEntry(p, 'offerer');
       entry.role = 'offerer';
       const { pc, alive } = createPc(entry);
+      addLocalMedia(pc, true, entry.name);
       // Before createOffer, so the offer contains m=application (SCTP).
       attachChannel(entry, pc.createDataChannel('chat'));
       try {
@@ -256,7 +318,7 @@ export default function useMeshRoom() {
         log(`[${entry.name}] creating the offer failed: ${err.message}`, 'error');
       }
     },
-    [ensureEntry, createPc, attachChannel, sendSignal, log],
+    [ensureEntry, createPc, addLocalMedia, attachChannel, sendSignal, log],
   );
 
   const handleSignal = useCallback(
@@ -275,6 +337,7 @@ export default function useMeshRoom() {
           log(`[${entry.name}] ← offer (${payload.sdp.length} chars) → answering`, 'success');
           const { pc, alive } = createPc(entry);
           if (!(await applyRemoteDescription(entry, pc, alive, payload))) return;
+          addLocalMedia(pc, false, entry.name); // AFTER setRemoteDescription
           await pc.setLocalDescription(await pc.createAnswer());
           if (!alive()) return;
           sendSignal(entry.id, 'answer', pc.localDescription.toJSON());
@@ -310,7 +373,7 @@ export default function useMeshRoom() {
         log(`[${entry?.name ?? short(from)}] handling "${type}" failed: ${err.name}: ${err.message}`, 'error');
       }
     },
-    [ensureEntry, createPc, applyRemoteDescription, sendSignal, publish, log],
+    [ensureEntry, createPc, applyRemoteDescription, addLocalMedia, sendSignal, publish, log],
   );
 
   // ---- join / leave -----------------------------------------------------
@@ -452,6 +515,64 @@ export default function useMeshRoom() {
     return () => window.removeEventListener('pagehide', onPageHide);
   }, []);
 
+  // ---- data channel messages ---------------------------------------------
+
+  // Same JSON to every peer with an open channel. → how many got it.
+  const broadcast = useCallback((obj) => {
+    const data = JSON.stringify(obj);
+    let sent = 0;
+    for (const e of peersRef.current.values()) {
+      if (e.dataChannel?.readyState === 'open') {
+        e.dataChannel.send(data);
+        sent++;
+      }
+    }
+    return sent;
+  }, []);
+
+  // ---- media across all connections ---------------------------------------
+
+  // Camera switch: one new track, put into EVERY connection's sender of that kind.
+  // No renegotiation (same transceiver, m-line, SSRC, codec), see step 10.
+  const replaceTrack = useCallback(
+    async (kind, track) => {
+      const entries = [...peersRef.current.values()].filter((e) => e.pc && e.pc.connectionState !== 'closed');
+      const results = await Promise.allSettled(
+        entries.map((e) => {
+          const t = e.pc.getTransceivers().find((tr) => tr.sender.track?.kind === kind || tr.receiver.track.kind === kind);
+          if (!t) return Promise.reject(new Error('no transceiver'));
+          return t.sender.replaceTrack(track);
+        }),
+      );
+      const ok = results.filter((r) => r.status === 'fulfilled').length;
+      log(`replaceTrack(${kind}) on ${ok}/${entries.length} connection(s), no renegotiation`, ok === entries.length ? 'success' : 'warn');
+      return ok;
+    },
+    [log],
+  );
+
+  // Audio levels (0..1) from getStats: inbound-rtp = what each peer sends us,
+  // media-source = our own mic (the same on every pc, so any one will do).
+  const getAudioLevels = useCallback(async () => {
+    const levels = {};
+    const entries = [...peersRef.current.values()].filter((e) => e.pc && e.pc.connectionState === 'connected');
+    await Promise.all(
+      entries.map(async (e) => {
+        try {
+          const report = await e.pc.getStats();
+          report.forEach((r) => {
+            if (r.kind !== 'audio' || r.audioLevel == null) return;
+            if (r.type === 'inbound-rtp') levels[e.id] = r.audioLevel;
+            else if (r.type === 'media-source') levels.me = Math.max(levels.me ?? 0, r.audioLevel);
+          });
+        } catch {
+          // pc closed between the filter and getStats: skip it
+        }
+      }),
+    );
+    return levels;
+  }, []);
+
   // ---- chat -------------------------------------------------------------
 
   // No server, no relay: the same message is sent separately over EVERY open
@@ -476,5 +597,5 @@ export default function useMeshRoom() {
     [addMessage, log],
   );
 
-  return { status, room, error, peers, messages, join, leave, sendChat };
+  return { status, room, error, peers, messages, join, leave, sendChat, broadcast, replaceTrack, getAudioLevels };
 }

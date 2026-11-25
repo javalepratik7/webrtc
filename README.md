@@ -2,7 +2,7 @@
 
 A hands-on project for learning WebRTC from scratch, built step by step: from
 `getUserMedia` to a complete 1:1 peer-to-peer video call with chat, over a
-Socket.IO signaling server, and then group rooms (full mesh).
+Socket.IO signaling server, and then group video calls (full mesh, up to 6 people).
 
 Theory notes: `~/Desktop/Code/functionality/Webrtc.md`. What I learned in each step: [`notes/`](notes/).
 
@@ -18,13 +18,13 @@ WebRTC/
 │   └── src/
 │       ├── pages/           Home, MediaLab, Loopback, ManualSignaling, Room, GroupMesh
 │       ├── hooks/           useLocalMedia, useDevices, useLoopback, useManualPeer,
-│       │                    useSignaling, usePeerConnection, useChat, useMeshRoom, useLog, …
+│       │                    useSignaling, usePeerConnection, useChat, useMeshRoom, useActiveSpeaker, useLog, …
 │       ├── components/      VideoTile, MicLevel, DeviceSelector, SdpViewer, CandidateTable,
 │       │                    StatsPanel, StatsOverlay, ChatBox, CallControls, ParticipantList,
-│       │                    MeshDiagram, GroupChat, CopyBox, LogPanel, …
+│       │                    MeshDiagram, GroupChat, VideoGrid, ParticipantTile, CopyBox, LogPanel, …
 │       └── services/        webrtc.js (ICE config, candidate parser, stats), sdp.js,
 │                            socket.js (single Socket.IO client), api.js
-└── notes/                   step02.md … step11.md
+└── notes/                   step02.md … step12.md
 ```
 
 ## Prerequisites
@@ -86,7 +86,7 @@ Two tabs on one laptop work too. Use headphones or mute one side, or you'll get 
 | **Loopback** | 5–6 | Two peer connections in one tab; SDP viewer with per-line explanations, ICE candidate table (mDNS, srflx), getStats, trickle vs non-trickle |
 | **Manual Signaling** | 7 | Connect two tabs by copy-pasting offer/answer (and candidates): you are the signaling server |
 | **Room** | 8–10 | Socket.IO rooms → P2P data-channel chat → full video call |
-| **Group Mesh** | 11 | Up to 6 people, one peer connection per pair (N×(N−1)/2), per-peer states, group chat over every data channel |
+| **Group Mesh** | 11–12 | Up to 6 people, one peer connection per pair (N×(N−1)/2), per-peer states, group chat; video grid, mute/camera state over data channels, active speaker, camera switch on every sender |
 
 Every page writes timestamped events to the **Event log** at the bottom.
 
@@ -146,10 +146,11 @@ The new joiner offers to everyone in `participants`; existing users only answer.
 | 9  | P2P data channel ✅         | Room               | Trickle ICE, candidate queue, `RTCDataChannel` chat | [step09](notes/step09.md) |
 | 10 | P2P video call ✅           | Room               | Tracks before offer/answer, `ontrack`, `replaceTrack`, stats, cleanup | [step10](notes/step10.md) |
 | 11 | Group mesh (chat) ✅        | Group Mesh         | Per-peer `RTCPeerConnection` Map, unicast signaling, join rule vs glare, N×(N−1)/2 | [step11](notes/step11.md) |
+| 12 | Group mesh video ✅         | Group Mesh         | One track → N−1 senders, remote streams per peer, media-state broadcast, `audioLevel` active speaker, flicker-free grid | [step12](notes/step12.md) |
 
 ### Next phase
 
 - **TURN server** (coturn) with short-lived credentials from the backend, so calls work across strict NATs / mobile data
 - ICE restart on network changes, perfect negotiation (renegotiation without glare)
 - Auth, room authorization and rate limits on the signaling server
-- Group calls: video over the mesh, then an SFU
+- Group calls: an SFU (one upload instead of N−1)
