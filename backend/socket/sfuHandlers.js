@@ -10,6 +10,9 @@
 //   sfu:consume          { transportId, producerId, rtpCapabilities }      → { id, producerId, kind, rtpParameters, … } (PAUSED)
 //   sfu:resumeConsumer   { consumerId }                                    → {}
 //   sfu:closeProducer    { producerId }                                    → {}              (e.g. stop screen share)
+//   sfu:pauseProducer    { producerId }                                    → {}              (step 15: mute / camera off)
+//   sfu:resumeProducer   { producerId }                                    → {}
+//   sfu:setPreferredLayers { consumerId, spatialLayer, temporalLayer? }    → { preferredLayers }  (step 15: simulcast)
 //   sfu:leave                                                              → {}
 //
 // Server → client
@@ -18,6 +21,8 @@
 //   sfu:new-producer     { producerId, peerId, name, kind, source }        someone started sending a track → consume it
 //   sfu:producer-closed  { consumerId, producerId, peerId }                a track you receive is gone → close it
 //   sfu:room-closed      { roomId, reason }                                the worker died: re-join
+//   sfu:producer-paused / sfu:producer-resumed { consumerId, producerId, peerId, kind }   (step 15)
+//   sfu:consumer-layers  { consumerId, spatialLayer, temporalLayer }       simulcast layer now forwarded (step 15)
 //
 // Compared with steps 8–13 the server is no longer a dumb relay: it is the OTHER
 // END of every connection. Nothing is forwarded peer-to-peer; the browser talks
@@ -128,8 +133,8 @@ export default function registerSfuHandlers(io, socket) {
     return { id: producer.id };
   });
 
-  handle('sfu:consume', async ({ transportId, producerId, rtpCapabilities }) =>
-    currentRoom().consume(socket.id, { transportId, producerId, rtpCapabilities }),
+  handle('sfu:consume', async ({ transportId, producerId, rtpCapabilities, preferredLayers }) =>
+    currentRoom().consume(socket.id, { transportId, producerId, rtpCapabilities, preferredLayers }),
   );
 
   handle('sfu:resumeConsumer', async ({ consumerId }) => {
@@ -140,6 +145,21 @@ export default function registerSfuHandlers(io, socket) {
   handle('sfu:closeProducer', async ({ producerId }) => {
     currentRoom().closeProducer(socket.id, producerId);
     return {};
+  });
+
+  handle('sfu:pauseProducer', async ({ producerId }) => {
+    await currentRoom().setProducerPaused(socket.id, producerId, true);
+    return {};
+  });
+
+  handle('sfu:resumeProducer', async ({ producerId }) => {
+    await currentRoom().setProducerPaused(socket.id, producerId, false);
+    return {};
+  });
+
+  handle('sfu:setPreferredLayers', async ({ consumerId, spatialLayer, temporalLayer }) => {
+    const layers = { spatialLayer, ...(temporalLayer != null && { temporalLayer }) };
+    return { preferredLayers: await currentRoom().setPreferredLayers(socket.id, consumerId, layers) };
   });
 
   handle('sfu:leave', async () => {

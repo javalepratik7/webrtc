@@ -21,6 +21,8 @@ import msConfig from './config.js';
 import { getNextWorker } from './workers.js';
 
 const short = (id) => String(id).slice(0, 6);
+const validLayers = (l) =>
+  l && Number.isInteger(l.spatialLayer) && l.spatialLayer >= 0 && l.spatialLayer <= 2 && (l.temporalLayer == null || (Number.isInteger(l.temporalLayer) && l.temporalLayer >= 0 && l.temporalLayer <= 2));
 const SOURCES = new Set(['mic', 'camera', 'screen']);
 
 export class SfuRoom extends EventEmitter {
@@ -162,10 +164,22 @@ export class SfuRoom extends EventEmitter {
     producer.close(); // → every consumer of it fires 'producerclose'
   }
 
+  // Step 15: mute / camera off. Pausing the SERVER-side producer stops forwarding
+  // it to every consumer AND fires 'producerpause' on each of them → we tell each
+  // receiver (sfu:producer-paused). Newcomers see it in consume()'s producerPaused.
+  async setProducerPaused(peerId, producerId, paused) {
+    const producer = this.getPeer(peerId).producers.get(producerId);
+    if (!producer) throw new Error('unknown producer');
+    if (paused) await producer.pause();
+    else await producer.resume();
+  }
+
   // ---- consumers (what a peer receives) ---------------------------------------
 
   // rtpCapabilities = what the RECEIVING browser can decode (device.rtpCapabilities).
-  async consume(peerId, { transportId, producerId, rtpCapabilities }) {
+  // preferredLayers (simulcast): which encoding to START with, e.g. { spatialLayer: 0 }
+  // for a small tile, so we don't send 720p first and then switch down.
+  async consume(peerId, { transportId, producerId, rtpCapabilities, preferredLayers }) {
     const peer = this.getPeer(peerId);
     const transport = this.getTransport(peer, transportId, 'recv');
     const entry = this.producers.get(producerId);
@@ -178,6 +192,7 @@ export class SfuRoom extends EventEmitter {
       producerId,
       rtpCapabilities,
       paused: true, // see notes/step14.md: start paused, resume once the client is ready
+      ...(validLayers(preferredLayers) && { preferredLayers }),
       appData: { peerId, producerPeerId: entry.peerId },
     });
     peer.consumers.set(consumer.id, consumer);
@@ -185,6 +200,16 @@ export class SfuRoom extends EventEmitter {
     // The sender stopped this track or left: tell THIS receiver to drop it.
     consumer.on('producerclose', () => {
       this.notify(peerId, 'sfu:producer-closed', { consumerId: consumer.id, producerId, peerId: entry.peerId });
+    });
+    // The sender muted / unmuted (sfu:pauseProducer): tell THIS receiver, so its UI can show 🔇 / camera off.
+    const pauseInfo = { consumerId: consumer.id, producerId, peerId: entry.peerId, kind: consumer.kind };
+    consumer.on('producerpause', () => this.notify(peerId, 'sfu:producer-paused', pauseInfo));
+    consumer.on('producerresume', () => this.notify(peerId, 'sfu:producer-resumed', pauseInfo));
+    // Simulcast: which layer is ACTUALLY being forwarded now. It can differ from the
+    // preferred one: the SFU drops to a lower layer when the receiver's bandwidth
+    // estimate is too low, or the sender stopped sending the high one (CPU/bandwidth).
+    consumer.on('layerschange', (layers) => {
+      this.notify(peerId, 'sfu:consumer-layers', { consumerId: consumer.id, spatialLayer: layers?.spatialLayer ?? null, temporalLayer: layers?.temporalLayer ?? null });
     });
 
     const from = this.peers.get(entry.peerId)?.name;
@@ -198,6 +223,7 @@ export class SfuRoom extends EventEmitter {
       type: consumer.type, // 'simple' | 'simulcast' | 'svc'
       producerPaused: consumer.producerPaused,
       source: entry.producer.appData.source,
+      preferredLayers: consumer.preferredLayers ?? null,
     };
   }
 
@@ -208,6 +234,17 @@ export class SfuRoom extends EventEmitter {
     await consumer.resume();
     // A video receiver joining mid-stream needs a keyframe to start decoding:
     // mediasoup asks the producer for one when a video consumer is resumed.
+  }
+
+  // Simulcast layer selection, driven by the receiver's UI (tile size).
+  // spatialLayer 0 = lowest resolution (scaleResolutionDownBy 4) … 2 = full.
+  async setPreferredLayers(peerId, consumerId, layers) {
+    const consumer = this.getPeer(peerId).consumers.get(consumerId);
+    if (!consumer) throw new Error('unknown consumer');
+    if (consumer.type !== 'simulcast' && consumer.type !== 'svc') throw new Error(`consumer is ${consumer.type}, not simulcast/svc`);
+    if (!validLayers(layers)) throw new Error('invalid layers');
+    await consumer.setPreferredLayers(layers);
+    return consumer.preferredLayers;
   }
 
   // ---- lifecycle --------------------------------------------------------------
@@ -224,14 +261,32 @@ export class SfuRoom extends EventEmitter {
     logger.warn(`sfu "${this.id}": room closed (${reason})`);
   }
 
-  stats() {
+  // Includes the SERVER's bandwidth: every transport reports recvBitrate (from
+  // browsers) and sendBitrate (to browsers). In an SFU: in ≈ N streams, out ≈ N×(N−1).
+  async stats() {
     const peers = [...this.peers.values()];
+    const transports = peers.flatMap((p) => [...p.transports.values()]);
+    let inBps = 0;
+    let outBps = 0;
+    await Promise.all(
+      transports.map(async (t) => {
+        try {
+          const [st] = await t.getStats();
+          inBps += st?.recvBitrate ?? 0;
+          outBps += st?.sendBitrate ?? 0;
+        } catch {
+          // closed meanwhile
+        }
+      }),
+    );
     return {
       roomId: this.id,
       peers: peers.length,
-      transports: peers.reduce((n, p) => n + p.transports.size, 0),
+      transports: transports.length,
       producers: this.producers.size,
       consumers: peers.reduce((n, p) => n + p.consumers.size, 0),
+      serverInKbps: Math.round(inBps / 1000),
+      serverOutKbps: Math.round(outBps / 1000),
     };
   }
 }
@@ -263,6 +318,6 @@ export function closeIfEmpty(room) {
   if (room && !room.closed && room.peers.size === 0) room.close('empty');
 }
 
-export function sfuStats() {
-  return [...rooms.values()].map((r) => r.stats());
+export async function sfuStats() {
+  return Promise.all([...rooms.values()].map((r) => r.stats()));
 }

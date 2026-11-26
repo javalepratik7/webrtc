@@ -13,17 +13,45 @@
 //   - Tiles stay in join order. We highlight the speaker, we don't move them:
 //     reordering on every speaker change would make the grid jump around.
 //   - levels → 0–4 bars here, so a tile only re-renders when its bar count changes.
+//
+// Step 15 (SFU): optional spotlight + tile-size reporting for simulcast.
+//   pinnedId     → that tile spans the full width, the others become a strip of small tiles.
+//                  Done with CSS `order`, NOT by reordering children: no DOM moves.
+//   onSelect(id) → click a tile (to pin / unpin it)
+//   onTileResize(id, widthPx) → ResizeObserver on every tile; the SFU page turns
+//                  the width into a simulcast layer (big tile → high, small → low).
+import { useEffect, useRef } from 'react';
 import ParticipantTile from './ParticipantTile.jsx';
 
 const layoutClass = (n) => (n <= 1 ? 'grid-1' : n === 2 ? 'grid-2' : n <= 4 ? 'grid-4' : 'grid-6');
 const toBars = (level = 0) => (level < 0.01 ? 0 : level < 0.05 ? 1 : level < 0.12 ? 2 : level < 0.25 ? 3 : 4);
 
-export default function VideoGrid({ tiles, activeId, levels }) {
+export default function VideoGrid({ tiles, activeId, levels, pinnedId = null, onSelect, onTileResize }) {
+  const gridRef = useRef(null);
+  const resizeRef = useRef(onTileResize);
+  resizeRef.current = onTileResize;
+  const idsKey = tiles.map((t) => t.id).join('|');
+  const pinned = pinnedId && tiles.some((t) => t.id === pinnedId) ? pinnedId : null;
+
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || !resizeRef.current || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) resizeRef.current?.(e.target.dataset.tileId, e.contentRect.width);
+    });
+    grid.querySelectorAll('[data-tile-id]').forEach((el) => ro.observe(el));
+    return () => ro.disconnect();
+  }, [idsKey]);
+
   return (
-    <div className={`video-grid ${layoutClass(tiles.length)}`} data-count={tiles.length}>
+    <div ref={gridRef} className={`video-grid ${pinned ? 'spotlight' : layoutClass(tiles.length)}`} data-count={tiles.length}>
       {tiles.map((t) => (
         <ParticipantTile
           key={t.id}
+          id={t.id}
+          pinned={t.id === pinned}
+          onSelect={onSelect}
+          badge={t.badge}
           name={t.name}
           stream={t.stream}
           isLocal={t.isLocal}

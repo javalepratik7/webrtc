@@ -2,7 +2,7 @@
 
 A hands-on project for learning WebRTC from scratch, built step by step: from
 `getUserMedia` to a complete 1:1 peer-to-peer video call with chat, over a
-Socket.IO signaling server, and then group video calls (full mesh, up to 6 people) made robust and measured, then an SFU (mediasoup) backend.
+Socket.IO signaling server, and then group video calls (full mesh, up to 6 people) made robust and measured, then replaced by an SFU (mediasoup + mediasoup-client) with simulcast.
 
 Theory notes: `~/Desktop/Code/functionality/Webrtc.md`. What I learned in each step: [`notes/`](notes/).
 
@@ -17,15 +17,15 @@ WebRTC/
 │   └── mediasoup/           SFU: config (codecs, ports, announcedIp), workers (1 per core), sfuRoom (router + peers)
 ├── frontend/                React + Vite, HTTPS on port 5173
 │   └── src/
-│       ├── pages/           Home, MediaLab, Loopback, ManualSignaling, Room, GroupMesh
+│       ├── pages/           Home, MediaLab, Loopback, ManualSignaling, Room, GroupMesh, GroupSfu
 │       ├── hooks/           useLocalMedia, useDevices, useLoopback, useManualPeer,
-│       │                    useSignaling, usePeerConnection, useChat, useMeshRoom, useActiveSpeaker, useLog, …
+│       │                    useSignaling, usePeerConnection, useChat, useMeshRoom, useSfuRoom, useActiveSpeaker, useLog, …
 │       ├── components/      VideoTile, MicLevel, DeviceSelector, SdpViewer, CandidateTable,
 │       │                    StatsPanel, StatsOverlay, ChatBox, CallControls, ParticipantList, PeerStatsTable,
 │       │                    MeshDiagram, GroupChat, VideoGrid, ParticipantTile, CopyBox, LogPanel, …
 │       └── services/        webrtc.js (ICE config, candidate parser, stats), sdp.js,
 │                            socket.js (single Socket.IO client), api.js, meshStats.js
-└── notes/                   step02.md … step14.md
+└── notes/                   step02.md … step15.md
 ```
 
 ## Prerequisites
@@ -89,6 +89,7 @@ Two tabs on one laptop work too. Use headphones or mute one side, or you'll get 
 | **Loopback** | 5–6 | Two peer connections in one tab; SDP viewer with per-line explanations, ICE candidate table (mDNS, srflx), getStats, trickle vs non-trickle |
 | **Manual Signaling** | 7 | Connect two tabs by copy-pasting offer/answer (and candidates): you are the signaling server |
 | **Room** | 8–10 | Socket.IO rooms → P2P data-channel chat → full video call |
+| **Group SFU** | 15 | The same call through the mediasoup SFU: 2 RTCPeerConnections per tab, simulcast (3 layers) with the layer chosen by tile size (click to pin), mute via `producer.pause()` announced by the server, transport stats + server card (`/api/sfu`) |
 | **Group Mesh** | 11–13 | Up to 6 people, one peer connection per pair (N×(N−1)/2), per-peer states, group chat; video grid, mute/camera state over data channels, active speaker, camera switch on every sender; perfect negotiation, screen share, per-peer ICE restart, survives backend restarts, per-peer stats + totals, bitrate caps |
 
 Every page writes timestamped events to the **Event log** at the bottom.
@@ -129,7 +130,8 @@ Group mesh (step 11): separate `group:*` events. Signals are **unicast** to one 
 
 SFU (step 14): `sfu:join`, `sfu:createTransport`, `sfu:connectTransport`, `sfu:produce`, `sfu:consume`, `sfu:resumeConsumer`,
 `sfu:closeProducer`, `sfu:leave` (all with ack); server → client `sfu:new-producer`, `sfu:producer-closed`, `sfu:peer-joined/left`,
-`sfu:room-closed`. Details in [notes/step14.md](notes/step14.md).
+`sfu:room-closed`. Step 15 adds `sfu:pauseProducer` / `sfu:resumeProducer` / `sfu:setPreferredLayers` and
+`sfu:producer-paused` / `sfu:producer-resumed` / `sfu:consumer-layers`. Details in [notes/step14.md](notes/step14.md) and [notes/step15.md](notes/step15.md).
 
 Peers are addressed by `clientId` (one per tab, survives reconnects). Signal types: `description` and `candidate`,
 with `{ pcId, toPcId }`. The new joiner starts each connection; after that, perfect negotiation lets either side renegotiate.
@@ -161,9 +163,18 @@ with `{ pcId, toPcId }`. The new joiner starts each connection; after that, perf
 | 12 | Group mesh video ✅         | Group Mesh         | One track → N−1 senders, remote streams per peer, media-state broadcast, `audioLevel` active speaker, flicker-free grid | [step12](notes/step12.md) |
 | 13 | Robust mesh + scaling ✅    | Group Mesh         | Perfect negotiation, `restartIce`, reconnect without duplicates, per-peer stats, `setParameters` caps, N−1 upload/CPU experiment | [step13](notes/step13.md) |
 | 14 | SFU backend (mediasoup) ✅  | backend            | Workers, Router, WebRtcTransport, Producer/Consumer, rtpCapabilities, announcedIp, paused consumers | [step14](notes/step14.md) |
+| 15 | SFU frontend + simulcast ✅ | Group SFU          | mediasoup-client, send/recv transports, `producer.pause`, simulcast + `setPreferredLayers`, mesh vs SFU experiment, EC2 deployment, mediasoup vs LiveKit | [step15](notes/step15.md) |
+
+### Mesh vs SFU (step 15, same laptop, 2 → 6 participants)
+
+| | Upload per person | Quality at N = 6 | All tabs CPU at N = 6 | Server |
+|---|---|---|---|---|
+| Mesh | grows ×(N−1), then collapses | 360–540p @ 4–8 fps (`cpu`-limited) | ~1100 % (saturated from N = 4) | signaling only |
+| SFU | flat ~1.35 Mbps (3 simulcast layers) | 20 fps, layer per tile size | 623 % | 10 % of one core, 8 Mbps in / 6.7 Mbps out |
 
 ### Next phase
 
-- **TURN server** (coturn) with short-lived credentials from the backend, so calls work across strict NATs / mobile data
-- Auth, room authorization and rate limits on the signaling server
-- SFU frontend: mediasoup-client page, then simulcast + layer selection
+- **Deploy on EC2**: Elastic IP as `MEDIASOUP_ANNOUNCED_IP`, UDP/TCP 40000–40100 in the security group, nginx + Let's Encrypt
+  in front of `vite build` and the backend, **coturn** with short-lived credentials (see [notes/step15.md](notes/step15.md) §8)
+- Auth (JWT in the Socket.IO handshake), room roles and rate limits
+- Recording (PlainTransport → FFmpeg), E2EE (Insertable Streams / SFrame), several SFU servers (Redis, `pipeToRouter`)

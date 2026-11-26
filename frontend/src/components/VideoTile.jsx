@@ -22,6 +22,8 @@ export default function VideoTile({
   placeholder,
   className = '',
   children,
+  dataId, // step 15: lets VideoGrid find the tile for its ResizeObserver
+  onClick,
 }) {
   const videoRef = useRef(null);
   const [blocked, setBlocked] = useState(false);
@@ -51,7 +53,7 @@ export default function VideoTile({
   }, [sinkId]);
 
   return (
-    <figure className={`video-tile ${className}`}>
+    <figure className={`video-tile ${className}`} data-tile-id={dataId} onClick={onClick}>
       <video
         ref={videoRef}
         autoPlay // start playing as soon as a stream is attached

@@ -8,6 +8,7 @@ const links = [
   { to: '/manual', label: 'Manual Signaling' },
   { to: '/room', label: 'Room' },
   { to: '/group', label: 'Group Mesh' },
+  { to: '/sfu', label: 'Group SFU' },
 ];
 
 export default function NavBar() {

@@ -1,4 +1,6 @@
 // One row per peer connection, refreshed every 2 s, + my totals across all of them.
+// Mesh (step 13): one row per peer. SFU (step 15): one row per TRANSPORT, so just
+// "send" and "recv", whatever the room size. onSetMaxBitrate is optional.
 //
 //   <PeerStatsTable peers={mesh.peers} getPeerStats={mesh.getPeerStats} onSetMaxBitrate={mesh.setMaxBitrate} />
 //
@@ -68,7 +70,7 @@ export default function PeerStatsTable({ peers, getPeerStats, onSetMaxBitrate })
         <div>
           <span className="muted small">Video encoders running</span>
           <strong>{encoders}</strong>
-          <span className="muted small">same camera, encoded {encoders}×</span>
+          <span className="muted small">mesh: one per peer · SFU: one per simulcast layer</span>
         </div>
         <div>
           <span className="muted small">Encode / decode CPU</span>
@@ -77,11 +79,13 @@ export default function PeerStatsTable({ peers, getPeerStats, onSetMaxBitrate })
           </strong>
           <span className="muted small">of one core</span>
         </div>
-        <div>
-          <span className="muted small">Max video bitrate, every peer</span>
-          <BitrateSelect value={allSame} onChange={(v) => onSetMaxBitrate('all', v)} label="Max video bitrate for all peers" />
-          <span className="muted small">sender.setParameters</span>
-        </div>
+        {onSetMaxBitrate && (
+          <div>
+            <span className="muted small">Max video bitrate, every peer</span>
+            <BitrateSelect value={allSame} onChange={(v) => onSetMaxBitrate('all', v)} label="Max video bitrate for all peers" />
+            <span className="muted small">sender.setParameters</span>
+          </div>
+        )}
       </div>
       <div className="table-scroll">
         <table className="track-table stats-table">
@@ -97,13 +101,13 @@ export default function PeerStatsTable({ peers, getPeerStats, onSetMaxBitrate })
               <th>Loss ↓ / ↑</th>
               <th>Limited by</th>
               <th>Encode CPU</th>
-              <th>Max ↑ video</th>
+              {onSetMaxBitrate && <th>Max ↑ video</th>}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={11} className="muted">
+                <td colSpan={onSetMaxBitrate ? 11 : 10} className="muted">
                   No peers yet.
                 </td>
               </tr>
@@ -127,9 +131,11 @@ export default function PeerStatsTable({ peers, getPeerStats, onSetMaxBitrate })
                 </td>
                 <td className={s?.limitation && s.limitation !== 'none' ? 'stats-warn' : undefined}>{s?.limitation ?? '–'}</td>
                 <td>{s?.encodePct != null ? `${num(s.encodePct)}%` : '–'}</td>
-                <td>
-                  <BitrateSelect value={p.maxKbps} onChange={(v) => onSetMaxBitrate(p.id, v)} label={`Max video bitrate to ${p.name}`} />
-                </td>
+                {onSetMaxBitrate && (
+                  <td>
+                    <BitrateSelect value={p.maxKbps} onChange={(v) => onSetMaxBitrate(p.id, v)} label={`Max video bitrate to ${p.name}`} />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -153,7 +159,7 @@ export default function PeerStatsTable({ peers, getPeerStats, onSetMaxBitrate })
                 <td>
                   <strong>{num(totals.encode)}%</strong>
                 </td>
-                <td />
+                {onSetMaxBitrate && <td />}
               </tr>
             </tfoot>
           )}

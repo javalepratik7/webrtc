@@ -22,8 +22,8 @@ const initials = (name) =>
     .slice(0, 2)
     .toUpperCase();
 
-function ParticipantTile({ name, stream, isLocal = false, isScreen = false, micOn, camOn, speaking, levelBars = 0, connection, mirrored = false }) {
-  const connecting = !isLocal && !isScreen && connection !== 'connected';
+function ParticipantTile({ id, name, stream, isLocal = false, isScreen = false, micOn, camOn, speaking, levelBars = 0, connection, mirrored = false, badge, pinned = false, onSelect }) {
+  const connecting = !isLocal && !isScreen && connection != null && connection !== 'connected';
   let placeholder = null;
   if (isScreen) {
     placeholder = stream ? null : 'waiting for the screen…';
@@ -41,7 +41,9 @@ function ParticipantTile({ name, stream, isLocal = false, isScreen = false, micO
       stream={stream}
       muted={isLocal || isScreen} // never play your own mic back; screens carry no audio
       mirrored={mirrored}
-      className={`participant-tile${speaking ? ' speaking' : ''}${isScreen ? ' screen-tile' : ''}`}
+      className={`participant-tile${speaking ? ' speaking' : ''}${isScreen ? ' screen-tile' : ''}${pinned ? ' pinned' : ''}${onSelect ? ' selectable' : ''}`}
+      dataId={id}
+      onClick={onSelect ? () => onSelect(id) : undefined}
       label={isScreen ? `🖥️ ${name}` : isLocal ? `${name} (you)` : name}
       placeholder={placeholder}
     >
@@ -58,6 +60,8 @@ function ParticipantTile({ name, stream, isLocal = false, isScreen = false, micO
         </span>
       )}
       {connecting && <span className="tile-status">{connection === 'none' ? 'waiting…' : connection}</span>}
+      {/* step 15: e.g. the simulcast layer this tile is receiving */}
+      {badge && <span className="tile-badge">{badge}</span>}
     </VideoTile>
   );
 }

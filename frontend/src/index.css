@@ -335,3 +335,16 @@ textarea {
 .stats-table tfoot td { border-top: 1px solid var(--border); }
 .stats-warn { color: var(--warn); }
 .participant-detail .small-btn { margin-left: 0.4rem; }
+
+/* Group SFU (Step 15) */
+.video-grid.spotlight { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.video-grid.spotlight > .participant-tile.pinned { grid-column: 1 / -1; order: -1; }
+@media (max-width: 600px) { .video-grid.spotlight { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.video-tile.participant-tile.selectable { cursor: pointer; }
+.tile-badge {
+  position: absolute; z-index: 3; left: 0.4rem; top: 0.4rem; max-width: calc(100% - 3.5rem); background: rgba(0, 0, 0, 0.65); border-radius: 4px;
+  font-size: 0.7rem; padding: 0.1rem 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sfu-server dl { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.75rem; margin: 0; }
+.sfu-server dt { color: var(--muted); }
+.sfu-server dd { margin: 0; font-variant-numeric: tabular-nums; }
